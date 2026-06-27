@@ -26,6 +26,9 @@ spec:
                 secretKeyRef: {name: mlaiops-postgres, key: database-url}
             - {name: MLAIOPS_TENANT, value: default}
             - {name: KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
+            - {name: OIDC_ISSUER, value: "https://dex.example.com"}
+            - {name: OIDC_AUDIENCE, value: mlaiops}
+            - {name: OIDC_JWKS_URL, value: "https://dex.example.com/keys"}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /api/v1/health, port: http}}
           livenessProbe: {httpGet: {path: /api/v1/health, port: http}}
