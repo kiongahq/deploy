@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlaiops-integration-worker
+  namespace: mlaiops-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: mlaiops-integration-worker}
+  template:
+    metadata:
+      labels: {app: mlaiops-integration-worker}
+    spec:
+      serviceAccountName: mlaiops-operator
+      containers:
+        - name: worker
+          image: ghcr.io/mlaiops/integration-worker:latest
+          env:
+            - {name: KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
+            - {name: MLAIOPS_TARGET_NAMESPACE, value: default}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}

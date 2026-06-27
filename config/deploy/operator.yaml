@@ -16,6 +16,10 @@ spec:
         - name: operator
           image: ghcr.io/mlaiops/operator:latest
           args: [--leader-elect=true, --metrics-bind-address=:8080, --health-probe-bind-address=:8082]
+          env:
+            - {name: ENVIRONMENT, value: production}
+            - {name: KFP_URL, value: "http://ml-pipeline.kubeflow:8888"}
+            - {name: MLFLOW_URL, value: "http://mlflow.mlaiops-system:5000"}
           ports:
             - {name: metrics, containerPort: 8080}
             - {name: health, containerPort: 8082}
