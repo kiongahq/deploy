@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlaiops-operator
+  namespace: mlaiops-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: mlaiops-operator}
+  template:
+    metadata:
+      labels: {app: mlaiops-operator}
+    spec:
+      serviceAccountName: mlaiops-operator
+      containers:
+        - name: operator
+          image: ghcr.io/mlaiops/operator:latest
+          ports:
+            - {name: http, containerPort: 8082}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
