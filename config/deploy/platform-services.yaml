@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mlaiops-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlaiops-gateway
+  namespace: mlaiops-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mlaiops-gateway}
+  template:
+    metadata:
+      labels: {app: mlaiops-gateway}
+    spec:
+      containers:
+        - name: gateway
+          image: ghcr.io/mlaiops/gateway:latest
+          env:
+            - {name: PORT, value: "8080"}
+            - {name: MLAIOPS_DATA_PATH, value: /var/lib/mlaiops/platform.json}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /api/v1/health, port: http}}
+          livenessProbe: {httpGet: {path: /api/v1/health, port: http}}
+          volumeMounts: [{name: data, mountPath: /var/lib/mlaiops}]
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mlaiops-gateway-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlaiops-gateway-data
+  namespace: mlaiops-system
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlaiops-gateway
+  namespace: mlaiops-system
+spec:
+  selector: {app: mlaiops-gateway}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlaiops-feature-gateway
+  namespace: mlaiops-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: mlaiops-feature-gateway}
+  template:
+    metadata: {labels: {app: mlaiops-feature-gateway}}
+    spec:
+      containers:
+        - name: feature-gateway
+          image: ghcr.io/mlaiops/feature-gateway:latest
+          ports: [{name: http, containerPort: 8083}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlaiops-storage-proxy
+  namespace: mlaiops-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: mlaiops-storage-proxy}
+  template:
+    metadata: {labels: {app: mlaiops-storage-proxy}}
+    spec:
+      containers:
+        - name: storage-proxy
+          image: ghcr.io/mlaiops/storage-proxy:latest
+          envFrom: [{secretRef: {name: mlaiops-storage-credentials}}]
+          ports: [{name: http, containerPort: 8084}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlaiops-metrics-collector
+  namespace: mlaiops-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mlaiops-metrics-collector}
+  template:
+    metadata: {labels: {app: mlaiops-metrics-collector}}
+    spec:
+      containers:
+        - name: collector
+          image: ghcr.io/mlaiops/metrics-collector:latest
+          ports: [{name: metrics, containerPort: 9090}]
+          readinessProbe: {httpGet: {path: /healthz, port: metrics}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true}
