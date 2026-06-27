@@ -9,7 +9,7 @@ metadata:
   name: mlaiops-gateway
   namespace: mlaiops-system
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels: {app: mlaiops-gateway}
   template:
@@ -21,26 +21,15 @@ spec:
           image: ghcr.io/mlaiops/gateway:latest
           env:
             - {name: PORT, value: "8080"}
-            - {name: MLAIOPS_DATA_PATH, value: /var/lib/mlaiops/platform.json}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: mlaiops-postgres, key: database-url}
+            - {name: MLAIOPS_TENANT, value: default}
+            - {name: KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /api/v1/health, port: http}}
           livenessProbe: {httpGet: {path: /api/v1/health, port: http}}
-          volumeMounts: [{name: data, mountPath: /var/lib/mlaiops}]
           securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true}
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: mlaiops-gateway-data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mlaiops-gateway-data
-  namespace: mlaiops-system
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests: {storage: 1Gi}
 ---
 apiVersion: v1
 kind: Service
