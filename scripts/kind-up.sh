@@ -26,4 +26,7 @@ done
 
 kubectl apply -f "$ROOT/config/network"
 kubectl apply -f "$ROOT/config/deploy"
+kubectl -n mlaiops-system set image deployment/mlaiops-operator operator=mlaiops/operator:dev
+kubectl -n mlaiops-system set image deployment/mlaiops-gateway gateway=mlaiops/gateway:dev
+kubectl -n mlaiops-system set image deployment/mlaiops-integration-worker worker=mlaiops/integration-worker:dev
 echo "Core platform applied. Install KFP, KServe, MLflow and Langfuse using your pinned environment values."

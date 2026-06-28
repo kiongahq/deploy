@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mlaiops-gateway
+  namespace: mlaiops-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-agent-config
+  namespace: mlaiops-system
+data:
+  config.hcl: |
+    auto_auth {
+      method "kubernetes" {
+        mount_path = "auth/kubernetes"
+        config = { role = "mlaiops-gateway" }
+      }
+      sink "file" { config = { path = "/vault/secrets/token" } }
+    }
+    template {
+      source      = "/vault/config/database.tpl"
+      destination = "/vault/secrets/database"
+    }
+  database.tpl: |
+    {{- with secret "database/creds/mlaiops-gateway" -}}
+    postgres://{{ .Data.username }}:{{ .Data.password }}@postgres-rw:5432/mlaiops?sslmode=require
+    {{- end -}}

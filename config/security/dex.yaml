@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex
+  namespace: mlaiops-system
+data:
+  config.yaml: |
+    issuer: https://dex.example.com
+    storage:
+      type: kubernetes
+      config:
+        inCluster: true
+    web:
+      http: 0.0.0.0:5556
+    oauth2:
+      skipApprovalScreen: true
+    staticClients:
+      - id: mlaiops
+        name: Nexus MLOps
+        secretEnv: DEX_CLIENT_SECRET
+        redirectURIs:
+          - https://mlaiops.example.com/callback
+    enablePasswordDB: false
+    connectors:
+      - type: github
+        id: github
+        name: GitHub
+        config:
+          clientID: $GITHUB_CLIENT_ID
+          clientSecret: $GITHUB_CLIENT_SECRET
+          redirectURI: https://dex.example.com/callback
+          orgs:
+            - name: replace-with-your-org
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dex
+  namespace: mlaiops-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: dex}
+  template:
+    metadata:
+      labels: {app: dex}
+    spec:
+      serviceAccountName: dex
+      containers:
+        - name: dex
+          image: ghcr.io/dexidp/dex:v2.42.0
+          args: [dex, serve, /etc/dex/config.yaml]
+          envFrom: [{secretRef: {name: dex-credentials}}]
+          ports: [{name: http, containerPort: 5556}]
+          volumeMounts: [{name: config, mountPath: /etc/dex, readOnly: true}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true}
+      volumes:
+        - name: config
+          configMap: {name: dex}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: dex, namespace: mlaiops-system}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: dex}
+rules:
+  - apiGroups: [dex.coreos.com]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: dex}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: dex}
+subjects: [{kind: ServiceAccount, name: dex, namespace: mlaiops-system}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: dex, namespace: mlaiops-system}
+spec:
+  selector: {app: dex}
+  ports: [{name: http, port: 5556, targetPort: http}]
