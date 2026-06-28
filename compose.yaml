@@ -63,11 +63,25 @@ services:
     ports: ["${MINIO_PORT:-9000}:9000", "${MINIO_CONSOLE_PORT:-9001}:9001"]
     volumes: [minio-data:/data]
 
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z
+    depends_on:
+      minio: {condition: service_started}
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 mlaiops mlaiops-local-secret; do sleep 2; done;
+      mc mb --ignore-existing local/mlaiops-models;
+      mc mb --ignore-existing local/mlaiops-artifacts;
+      mc mb --ignore-existing local/mlaiops-features;
+      mc mb --ignore-existing local/mlaiops-traces;
+      exit 0;"
+
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v3.1.1
+    build:
+      context: mlflow
     depends_on:
       postgres: {condition: service_healthy}
-      minio: {condition: service_started}
+      minio-init: {condition: service_completed_successfully}
     command:
       - mlflow
       - server
@@ -79,7 +93,12 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
-    ports: ["${MLFLOW_PORT:-5000}:5000"]
+    ports: ["${MLFLOW_PORT:-15000}:5000"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   gateway:
     build:
