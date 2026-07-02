@@ -2,7 +2,9 @@ name: mlaiops
 
 services:
   postgres:
-    image: postgres:16.9-alpine
+    # pgvector build of PostgreSQL 16: same database, plus the vector extension
+    # used by agent long-term memory and RAG (PRD sections 4.3, 4.6).
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: mlaiops
       POSTGRES_PASSWORD: mlaiops-local
@@ -111,7 +113,50 @@ services:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
       MLAIOPS_TENANT: local
+      AGENT_RUNTIME_URL: http://agent-runtime:9000
     ports: ["${GATEWAY_PORT:-8080}:8080"]
+
+  trace-proxy:
+    build:
+      context: ..
+      args: {SERVICE: trace-proxy}
+    depends_on:
+      kafka-rest: {condition: service_started}
+    environment:
+      # All agent LLM calls egress here; requests forward to the configured
+      # provider and every call is published to mlaiops.llm.traces.
+      LLM_UPSTREAM_URL: ${LLM_UPSTREAM_URL:-https://api.openai.com}
+      TRACE_SINK_FORMAT: kafka-rest
+      TRACE_SINK_URL: http://kafka-rest:8082/topics/mlaiops.llm.traces
+      MLAIOPS_AGENT_NAME: shared
+      MLAIOPS_AGENT_VERSION: local
+    ports: ["${TRACE_PROXY_PORT:-8081}:8081"]
+
+  agent-runtime:
+    build:
+      context: ..
+      dockerfile: python/agent_runtime/Dockerfile
+    depends_on:
+      postgres: {condition: service_healthy}
+      trace-proxy: {condition: service_started}
+    environment:
+      MLAIOPS_GRAPH_MODULE: ${MLAIOPS_GRAPH_MODULE:-agents.customer_support.graph:build}
+      MLAIOPS_AGENT_NAME: customer-support
+      MLAIOPS_AGENT_ID: ${MLAIOPS_AGENT_ID:-}
+      MLAIOPS_URL: http://gateway:8080
+      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      # mock by default: the stack works with zero API keys. Set
+      # MLAIOPS_LLM_BACKEND=openai (plus OPENAI_API_KEY) or anthropic for real
+      # models; calls egress through the trace-proxy.
+      MLAIOPS_LLM_BACKEND: ${MLAIOPS_LLM_BACKEND:-mock}
+      MLAIOPS_LLM_MODEL: ${MLAIOPS_LLM_MODEL:-}
+      MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+    ports: ["${AGENT_RUNTIME_PORT:-9000}:9000"]
 
 volumes:
   postgres-data:
