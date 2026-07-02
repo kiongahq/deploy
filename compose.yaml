@@ -83,6 +83,7 @@ services:
       exit 0;"
 
   mlflow:
+    image: mlaiops-mlflow
     build:
       context: mlflow
     depends_on:
@@ -119,6 +120,8 @@ services:
       MLAIOPS_TENANT: local
       AGENT_RUNTIME_URL: http://agent-runtime:9000
       STORAGE_PROXY_URL: http://storage-proxy:8084
+      PREFECT_API_URL: http://prefect-server:4200/api
+      SERVING_MANAGER_URL: http://serving-manager:8085
       LANGFUSE_URL: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
@@ -168,6 +171,66 @@ services:
       LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Local Admin}
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-mlaiops-local-admin}
     ports: ["${LANGFUSE_PORT:-3000}:3000"]
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    command: [prefect, server, start, --host, "0.0.0.0"]
+    environment:
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+    ports: ["${PREFECT_PORT:-4200}:4200"]
+    volumes: [prefect-data:/root/.prefect]
+    healthcheck:
+      test: [CMD-SHELL, python -c "import urllib.request;urllib.request.urlopen('http://localhost:4200/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  pipeline-runner:
+    build:
+      context: ..
+      dockerfile: python/pipelines/Dockerfile
+    depends_on:
+      prefect-server: {condition: service_healthy}
+      mlflow: {condition: service_healthy}
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      MLAIOPS_URL: http://gateway:8080
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: mlaiops
+      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+    restart: unless-stopped
+
+  serving-manager:
+    build:
+      context: ..
+      args: {SERVICE: serving-manager}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      SERVE_IMAGE: mlaiops-mlflow
+      PLATFORM_NETWORK: mlaiops_default
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: mlaiops
+      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+    ports: ["${SERVING_MANAGER_PORT:-8085}:8085"]
+
+  realtime-processor:
+    build:
+      context: ..
+      dockerfile: python/agent_runtime/Dockerfile
+    depends_on:
+      kafka-rest: {condition: service_started}
+      feature-gateway: {condition: service_started}
+    entrypoint: ["python", "-m", "realtime.service"]
+    environment:
+      KAFKA_REST_URL: http://kafka-rest:8082
+      MLAIOPS_URL: http://gateway:8080
+      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      CALLCENTER_AGENT_ID: ${CALLCENTER_AGENT_ID:-}
+      FRAUD_MODEL_ENDPOINT: ${FRAUD_MODEL_ENDPOINT:-}
+    restart: unless-stopped
 
   feature-materializer:
     build:
@@ -231,3 +294,4 @@ volumes:
   postgres-data:
   redis-data:
   minio-data:
+  prefect-data:

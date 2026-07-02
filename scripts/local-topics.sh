@@ -11,6 +11,12 @@ topics=(
   mlaiops.connection.commands
   mlaiops.llm.traces
   mlaiops.feature.updates
+  mlaiops.transactions
+  mlaiops.fraud.alerts
+  mlaiops.callcenter.transcripts
+  mlaiops.callcenter.insights
+  mlaiops.user.activity
+  mlaiops.recs.results
 )
 
 for topic in "${topics[@]}"; do
