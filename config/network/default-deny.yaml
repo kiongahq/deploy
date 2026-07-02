@@ -6,12 +6,3 @@ metadata:
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
----
-apiVersion: security.istio.io/v1
-kind: PeerAuthentication
-metadata:
-  name: strict-mtls
-  namespace: mlaiops-system
-spec:
-  mtls:
-    mode: STRICT

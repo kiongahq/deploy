@@ -10,7 +10,9 @@ services:
       POSTGRES_PASSWORD: mlaiops-local
       POSTGRES_DB: mlaiops
     ports: ["${POSTGRES_PORT:-5432}:5432"]
-    volumes: [postgres-data:/var/lib/postgresql/data]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: [CMD-SHELL, pg_isready -U mlaiops]
       interval: 5s
@@ -76,6 +78,8 @@ services:
       mc mb --ignore-existing local/mlaiops-artifacts;
       mc mb --ignore-existing local/mlaiops-features;
       mc mb --ignore-existing local/mlaiops-traces;
+      mc mb --ignore-existing local/mlaiops-agents;
+      mc mb --ignore-existing local/mlaiops-pipeline-logs;
       exit 0;"
 
   mlflow:
@@ -114,7 +118,71 @@ services:
       KAFKA_REST_URL: http://kafka-rest:8082
       MLAIOPS_TENANT: local
       AGENT_RUNTIME_URL: http://agent-runtime:9000
+      STORAGE_PROXY_URL: http://storage-proxy:8084
+      LANGFUSE_URL: http://langfuse:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
     ports: ["${GATEWAY_PORT:-8080}:8080"]
+
+  feature-gateway:
+    build:
+      context: ..
+      args: {SERVICE: feature-gateway}
+    depends_on:
+      redis: {condition: service_healthy}
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports: ["${FEATURE_GATEWAY_PORT:-8083}:8083"]
+
+  storage-proxy:
+    build:
+      context: ..
+      args: {SERVICE: storage-proxy}
+    depends_on:
+      minio: {condition: service_started}
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: mlaiops
+      S3_SECRET_KEY: mlaiops-local-secret
+    ports: ["${STORAGE_PROXY_PORT:-8084}:8084"]
+
+  langfuse:
+    image: langfuse/langfuse:2
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql://mlaiops:mlaiops-local@postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mlaiops-local-nextauth}
+      SALT: ${LANGFUSE_SALT:-mlaiops-local-salt}
+      TELEMETRY_ENABLED: "false"
+      # Headless init so the stack boots with working keys; override for
+      # anything public.
+      LANGFUSE_INIT_ORG_ID: mlaiops
+      LANGFUSE_INIT_ORG_NAME: mlaiops
+      LANGFUSE_INIT_PROJECT_ID: mlaiops-local
+      LANGFUSE_INIT_PROJECT_NAME: mlaiops-local
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@local.dev}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Local Admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-mlaiops-local-admin}
+    ports: ["${LANGFUSE_PORT:-3000}:3000"]
+
+  feature-materializer:
+    build:
+      context: ..
+      dockerfile: python/agent_runtime/Dockerfile
+    depends_on:
+      gateway: {condition: service_started}
+      feature-gateway: {condition: service_started}
+      storage-proxy: {condition: service_started}
+    environment:
+      MLAIOPS_URL: http://gateway:8080
+      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      MLAIOPS_STORAGE_PROXY_URL: http://storage-proxy:8084
+    entrypoint: ["python", "-m", "features.materialize"]
+    restart: "no"
 
   trace-proxy:
     build:
@@ -153,9 +221,10 @@ services:
       MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
-      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
     ports: ["${AGENT_RUNTIME_PORT:-9000}:9000"]
 
 volumes:
