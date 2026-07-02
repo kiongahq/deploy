@@ -1,0 +1,25 @@
+# TLS edge for the public deployment. Caddy provisions and renews the
+# Let's Encrypt certificate automatically for MLAIOPS_DOMAIN.
+{
+	email {$MLAIOPS_ACME_EMAIL}
+}
+
+{$MLAIOPS_DOMAIN} {
+	encode gzip
+
+	# Dex issues the identity tokens the gateway verifies.
+	handle /dex/* {
+		reverse_proxy dex:5556
+	}
+
+	# Langfuse UI for trace inspection (own auth).
+	handle_path /langfuse/* {
+		reverse_proxy langfuse:3000
+	}
+
+	# Everything else: the platform console and API. The gateway enforces
+	# OIDC on /api/*; static console assets are public.
+	handle {
+		reverse_proxy gateway:8080
+	}
+}
