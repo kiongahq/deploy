@@ -80,6 +80,9 @@ services:
     environment:
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
   prefect-server: {restart: unless-stopped, ports: []}
+  # The workbench stays private on the VM; reach it over an SSH tunnel:
+  #   ssh -L 8888:localhost:8888 <vm>  (after re-publishing the port locally)
+  jupyter: {restart: unless-stopped, ports: []}
   pipeline-runner:
     environment:
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}

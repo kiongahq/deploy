@@ -298,8 +298,34 @@ services:
     # host 19000: MinIO owns host port 9000
     ports: ["${AGENT_RUNTIME_PORT:-19000}:9000"]
 
+  jupyter:
+    build:
+      context: ..
+      dockerfile: deploy/jupyter/Dockerfile
+    depends_on:
+      mlflow: {condition: service_healthy}
+      gateway: {condition: service_started}
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
+      MLAIOPS_URL: http://gateway:8080
+      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: mlaiops
+      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      KAFKA_REST_URL: http://kafka-rest:8082
+      PREFECT_API_URL: http://prefect-server:4200/api
+      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+    ports: ["${JUPYTER_PORT:-8888}:8888"]
+    volumes: [jupyter-data:/workspace]
+
 volumes:
   postgres-data:
   redis-data:
   minio-data:
   prefect-data:
+  jupyter-data:
