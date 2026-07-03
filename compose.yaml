@@ -323,11 +323,39 @@ services:
       LANGFUSE_HOST: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NEXUS_CUSTOM_AGENT_COMMAND: ${NEXUS_CUSTOM_AGENT_COMMAND:-}
     ports: ["${JUPYTER_PORT:-8888}:8888"]
-    volumes: [jupyter-data:/workspace]
+    volumes:
+      - jupyter-data:/workspace
+      - workspace-codex:/home/dev/.codex
+      - workspace-claude:/home/dev/.claude
     cap_add: [SYS_ADMIN]
     devices: [/dev/fuse:/dev/fuse]
     security_opt: [apparmor:unconfined]
+
+  ide:
+    profiles: [ide]
+    build:
+      context: ..
+      dockerfile: deploy/ide/Dockerfile
+    environment:
+      PASSWORD: ${IDE_PASSWORD:-mlaiops-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NEXUS_CUSTOM_AGENT_COMMAND: ${NEXUS_CUSTOM_AGENT_COMMAND:-}
+      NEXUS_WORKSPACE: /workspace
+      MLAIOPS_URL: http://gateway:8080
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: mlaiops
+      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+    ports: ["${IDE_PORT:-13337}:8080"]
+    volumes:
+      - jupyter-data:/workspace
+      - workspace-codex:/home/coder/.codex
+      - workspace-claude:/home/coder/.claude
 
 volumes:
   postgres-data:
@@ -335,3 +363,5 @@ volumes:
   minio-data:
   prefect-data:
   jupyter-data:
+  workspace-codex:
+  workspace-claude:
