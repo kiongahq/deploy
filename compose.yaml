@@ -205,6 +205,10 @@ services:
     build:
       context: ..
       args: {SERVICE: serving-manager}
+    # Root inside this one container: the Docker socket requires it. This is
+    # the only service with engine access (mirrors the storage proxy's role
+    # as sole credential holder).
+    user: "0:0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -288,7 +292,8 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
-    ports: ["${AGENT_RUNTIME_PORT:-9000}:9000"]
+    # host 19000: MinIO owns host port 9000
+    ports: ["${AGENT_RUNTIME_PORT:-19000}:9000"]
 
 volumes:
   postgres-data:
