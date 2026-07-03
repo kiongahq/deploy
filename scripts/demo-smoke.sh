@@ -99,12 +99,24 @@ snapshot=$(curl -sf "$GATEWAY/api/v1/storage/objects?bucket=mlaiops-features&pre
 say "== 8. real-time processing"
 if docker compose -f deploy/compose.yaml ps realtime-processor 2>/dev/null | grep -q Up; then
   before=$(curl -sf "$GATEWAY/api/v1/realtime" | jqget "d['demos'].get('fraud',{}).get('events',0)")
-  (cd "$(dirname "$0")/.." && KAFKA_REST_URL=http://localhost:8082 PYTHONPATH=python python3 -m realtime.produce --demo fraud --count 3 >/dev/null)
   events="$before"
-  for _ in $(seq 1 20); do
-    events=$(curl -sf "$GATEWAY/api/v1/realtime" | jqget "d['demos'].get('fraud',{}).get('events',0)")
-    [[ "${events:-0}" -gt "${before:-0}" ]] && break
-    sleep 3
+  # Produce from inside the processor container (it has the SDK + httpx, so no
+  # host Python deps are required) and re-produce across the polling window:
+  # on a cold stack the consumer may still be joining the Kafka group when the
+  # first batch lands.
+  produce() {
+    docker compose -f deploy/compose.yaml exec -T realtime-processor \
+      python -m realtime.produce --demo fraud --count 3 >/dev/null 2>&1 \
+    || (cd "$(dirname "$0")/.." && KAFKA_REST_URL=http://localhost:8082 \
+        PYTHONPATH=python python3 -m realtime.produce --demo fraud --count 3 >/dev/null 2>&1)
+  }
+  for _ in $(seq 1 8); do
+    produce
+    for _ in $(seq 1 5); do
+      events=$(curl -sf "$GATEWAY/api/v1/realtime" | jqget "d['demos'].get('fraud',{}).get('events',0)")
+      [[ "${events:-0}" -gt "${before:-0}" ]] && break 2
+      sleep 3
+    done
   done
   [[ "${events:-0}" -gt "${before:-0}" ]] && ok "fraud events scored (events=$events)" || bad "realtime pipeline silent"
 else
