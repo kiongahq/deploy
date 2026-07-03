@@ -313,6 +313,9 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      S3_ENDPOINT: http://minio:9000
+      S3_MOUNT_ROOT: /workspace/object-store
+      S3_MOUNT_BUCKETS: mlaiops-models mlaiops-artifacts mlaiops-features mlaiops-traces mlaiops-agents mlaiops-pipeline-logs
       KAFKA_REST_URL: http://kafka-rest:8082
       PREFECT_API_URL: http://prefect-server:4200/api
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
@@ -322,6 +325,9 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
     ports: ["${JUPYTER_PORT:-8888}:8888"]
     volumes: [jupyter-data:/workspace]
+    cap_add: [SYS_ADMIN]
+    devices: [/dev/fuse:/dev/fuse]
+    security_opt: [apparmor:unconfined]
 
 volumes:
   postgres-data:
