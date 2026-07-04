@@ -3,7 +3,7 @@ name: mlaiops
 services:
   postgres:
     # pgvector build of PostgreSQL 16: same database, plus the vector extension
-    # used by agent long-term memory and RAG (PRD sections 4.3, 4.6).
+    # used by agent long-term memory and RAG.
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: mlaiops
