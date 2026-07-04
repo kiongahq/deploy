@@ -126,7 +126,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
       # Local-mode RBAC role for unauthenticated requests: admin | operator |
-      # engineer | viewer. Public deployments use OIDC claims instead.
+      # user | engineer | viewer. Public deployments use OIDC claims instead.
       MLAIOPS_LOCAL_ROLE: ${MLAIOPS_LOCAL_ROLE:-admin}
     ports: ["${GATEWAY_PORT:-8080}:8080"]
 
