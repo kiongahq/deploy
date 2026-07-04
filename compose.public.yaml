@@ -42,6 +42,11 @@ services:
       OIDC_ISSUER: https://${MLAIOPS_DOMAIN}/dex
       OIDC_JWKS_URL: http://dex:5556/dex/keys
       OIDC_AUDIENCE: mlaiops-console
+      OIDC_CLIENT_ID: mlaiops-console
+      OIDC_CLIENT_SECRET: ${DEX_CLIENT_SECRET}
+      OIDC_AUTH_URL: https://${MLAIOPS_DOMAIN}/dex/auth
+      OIDC_TOKEN_URL: http://dex:5556/dex/token
+      OIDC_REDIRECT_URL: https://${MLAIOPS_DOMAIN}/auth/callback
       MLAIOPS_ALLOWED_ORIGIN: https://${MLAIOPS_DOMAIN}
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:?set MLAIOPS_INTERNAL_TOKEN in .env}
     ports: []  # only reachable through Caddy
