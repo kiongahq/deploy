@@ -23,6 +23,12 @@ spec:
             - {name: MLAIOPS_URL, value: "http://mlaiops-gateway.mlaiops-system:8080"}
             - {name: WORKBENCH_IMAGE, value: "ghcr.io/ml-ai-ops/jupyter:latest"}
             - {name: IDE_IMAGE, value: "ghcr.io/ml-ai-ops/ide:latest"}
+            - {name: WORKSPACE_FEATURE_URL, value: "http://mlaiops-feature-gateway.mlaiops-system:8083"}
+            - {name: WORKSPACE_STORAGE_URL, value: "http://mlaiops-storage-proxy.mlaiops-system:8084"}
+            - {name: WORKSPACE_MLFLOW_URL, value: "http://mlflow.mlaiops-system:5000"}
+            - {name: WORKSPACE_PREFECT_URL, value: "http://prefect-server.mlaiops-system:4200/api"}
+            - {name: WORKSPACE_LANGFUSE_URL, value: "http://langfuse.mlaiops-system:3000"}
+            - {name: WORKSPACE_KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
           ports:
             - {name: metrics, containerPort: 8080}
             - {name: health, containerPort: 8082}
