@@ -9,6 +9,7 @@ topics=(
   mlaiops.agent.commands
   mlaiops.tool.commands
   mlaiops.connection.commands
+  mlaiops.workspace.commands
   mlaiops.llm.traces
   mlaiops.feature.updates
   mlaiops.transactions

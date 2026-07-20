@@ -22,6 +22,7 @@ KUBECTL=(kubectl --context "$CONTEXT")
 "${KUBECTL[@]}" cluster-info >/dev/null
 
 "${KUBECTL[@]}" wait --for=condition=Established crd/nexusagents.mlaiops.io --timeout=90s
+"${KUBECTL[@]}" wait --for=condition=Established crd/nexusworkspaces.mlaiops.io --timeout=90s
 "${KUBECTL[@]}" wait --for=condition=Available deployment/mlaiops-operator -n mlaiops-system --timeout=180s
 
 namespace="e2e-$RANDOM"
@@ -46,3 +47,21 @@ YAML
 "${KUBECTL[@]}" wait --for=condition=Ready nexusagent/e2e-agent -n "$namespace" --timeout=180s
 "${KUBECTL[@]}" get deployment e2e-agent-1 -n "$namespace"
 "${KUBECTL[@]}" get service e2e-agent-1 -n "$namespace"
+
+cat <<YAML | "${KUBECTL[@]}" apply -f -
+apiVersion: mlaiops.io/v1alpha1
+kind: NexusWorkspace
+metadata:
+  name: e2e-workspace
+  namespace: ${namespace}
+spec:
+  subject: e2e-user
+  services: [workbench, ide]
+  compute: {vcpus: 4, memoryGB: 8, maxVMs: 2}
+  storageGB: 10
+YAML
+
+"${KUBECTL[@]}" wait --for=condition=Ready nexusworkspace/e2e-workspace -n "$namespace" --timeout=180s
+"${KUBECTL[@]}" get deployment e2e-workspace -n "$namespace"
+"${KUBECTL[@]}" get service e2e-workspace -n "$namespace"
+"${KUBECTL[@]}" get persistentvolumeclaim e2e-workspace -n "$namespace"

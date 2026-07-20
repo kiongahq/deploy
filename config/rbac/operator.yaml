@@ -10,13 +10,13 @@ metadata:
   name: mlaiops-operator
 rules:
   - apiGroups: [mlaiops.io]
-    resources: [nexusagents, nexusagents/status, nexuspipelineruns, nexuspipelineruns/status, nexustools, nexustools/status, nexusconnections, nexusconnections/status, nexusmodelpromotions, nexusmodelpromotions/status]
+    resources: [nexusagents, nexusagents/status, nexuspipelineruns, nexuspipelineruns/status, nexustools, nexustools/status, nexusconnections, nexusconnections/status, nexusmodelpromotions, nexusmodelpromotions/status, nexusworkspaces, nexusworkspaces/status]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
-    resources: [services, secrets, configmaps, events]
+    resources: [services, persistentvolumeclaims, secrets, configmaps, events]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [networking.istio.io]
     resources: [virtualservices, destinationrules]

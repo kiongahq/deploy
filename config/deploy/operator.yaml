@@ -20,6 +20,9 @@ spec:
             - {name: ENVIRONMENT, value: production}
             - {name: KFP_URL, value: "http://ml-pipeline.kubeflow:8888"}
             - {name: MLFLOW_URL, value: "http://mlflow.mlaiops-system:5000"}
+            - {name: MLAIOPS_URL, value: "http://mlaiops-gateway.mlaiops-system:8080"}
+            - {name: WORKBENCH_IMAGE, value: "ghcr.io/ml-ai-ops/jupyter:latest"}
+            - {name: IDE_IMAGE, value: "ghcr.io/ml-ai-ops/ide:latest"}
           ports:
             - {name: metrics, containerPort: 8080}
             - {name: health, containerPort: 8082}

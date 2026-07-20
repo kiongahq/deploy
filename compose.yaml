@@ -125,6 +125,9 @@ services:
       LANGFUSE_URL: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      OPENFAAS_URL: ${OPENFAAS_URL:-}
+      OPENFAAS_USER: ${OPENFAAS_USER:-admin}
+      OPENFAAS_PASSWORD: ${OPENFAAS_PASSWORD:-}
       # Local-mode RBAC role for unauthenticated requests: admin | operator |
       # user | engineer | viewer. Public deployments use OIDC claims instead.
       MLAIOPS_LOCAL_ROLE: ${MLAIOPS_LOCAL_ROLE:-admin}
