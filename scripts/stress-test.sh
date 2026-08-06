@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Concurrency pressure test for the Nexus control plane.
+# Concurrency pressure test for the Kionga control plane.
 #
 #   make local-up && ./scripts/stress-test.sh
 #   CONCURRENCY=64 REQUESTS=400 ./scripts/stress-test.sh

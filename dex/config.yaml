@@ -13,7 +13,7 @@ oauth2:
 
 staticClients:
   - id: mlaiops-console
-    name: Nexus Console
+    name: Kionga Console
     redirectURIs:
       - https://$MLAIOPS_DOMAIN/auth/callback
     secretEnv: DEX_CLIENT_SECRET

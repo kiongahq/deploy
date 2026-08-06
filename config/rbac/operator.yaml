@@ -10,10 +10,13 @@ metadata:
   name: mlaiops-operator
 rules:
   - apiGroups: [mlaiops.io]
-    resources: [nexusagents, nexusagents/status, nexuspipelineruns, nexuspipelineruns/status, nexustools, nexustools/status, nexusconnections, nexusconnections/status, nexusmodelpromotions, nexusmodelpromotions/status, nexusworkspaces, nexusworkspaces/status]
+    resources: [kiongaagents, kiongaagents/status, kiongapipelineruns, kiongapipelineruns/status, kiongatools, kiongatools/status, kiongaconnections, kiongaconnections/status, kiongamodelpromotions, kiongamodelpromotions/status, kiongaworkspaces, kiongaworkspaces/status]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [apps]
     resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
     resources: [services, persistentvolumeclaims, secrets, configmaps, events]

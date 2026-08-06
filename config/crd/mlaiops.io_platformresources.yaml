@@ -1,11 +1,11 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: nexuspipelineruns.mlaiops.io
+  name: kiongapipelineruns.mlaiops.io
 spec:
   group: mlaiops.io
   scope: Namespaced
-  names: {plural: nexuspipelineruns, singular: nexuspipelinerun, kind: NexusPipelineRun, shortNames: [npr]}
+  names: {plural: kiongapipelineruns, singular: kiongapipelinerun, kind: KiongaPipelineRun, shortNames: [kpr]}
   versions:
     - name: v1alpha1
       served: true
@@ -35,11 +35,11 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: nexustools.mlaiops.io
+  name: kiongatools.mlaiops.io
 spec:
   group: mlaiops.io
   scope: Namespaced
-  names: {plural: nexustools, singular: nexustool, kind: NexusTool, shortNames: [ntool]}
+  names: {plural: kiongatools, singular: kiongatool, kind: KiongaTool, shortNames: [ktool]}
   versions:
     - name: v1alpha1
       served: true
@@ -68,11 +68,11 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: nexusconnections.mlaiops.io
+  name: kiongaconnections.mlaiops.io
 spec:
   group: mlaiops.io
   scope: Namespaced
-  names: {plural: nexusconnections, singular: nexusconnection, kind: NexusConnection, shortNames: [nconn]}
+  names: {plural: kiongaconnections, singular: kiongaconnection, kind: KiongaConnection, shortNames: [kconn]}
   versions:
     - name: v1alpha1
       served: true
@@ -105,11 +105,11 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: nexusmodelpromotions.mlaiops.io
+  name: kiongamodelpromotions.mlaiops.io
 spec:
   group: mlaiops.io
   scope: Namespaced
-  names: {plural: nexusmodelpromotions, singular: nexusmodelpromotion, kind: NexusModelPromotion, shortNames: [nmp]}
+  names: {plural: kiongamodelpromotions, singular: kiongamodelpromotion, kind: KiongaModelPromotion, shortNames: [kmp]}
   versions:
     - name: v1alpha1
       served: true

@@ -16,7 +16,7 @@ data:
       skipApprovalScreen: true
     staticClients:
       - id: mlaiops
-        name: Nexus MLOps
+        name: Kionga MLOps
         secretEnv: DEX_CLIENT_SECRET
         redirectURIs:
           - https://mlaiops.example.com/callback

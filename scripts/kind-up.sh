@@ -27,20 +27,28 @@ KUBECTL=(kubectl --context "$CONTEXT")
 
 helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null
 helm repo add strimzi https://strimzi.io/charts/ >/dev/null
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null
 helm repo update >/dev/null
 helm upgrade --install cnpg cnpg/cloudnative-pg --namespace cnpg-system --create-namespace --wait
 helm upgrade --install strimzi strimzi/strimzi-kafka-operator --namespace kafka --create-namespace --wait
+# Kind node certificates do not contain the node IP SANs used by metrics-server.
+# Keep TLS on the API endpoint while allowing metrics-server to scrape those
+# local kubelets, so CPU-target agent HPAs work in the fidelity stack.
+helm upgrade --install metrics-server metrics-server/metrics-server --namespace kube-system --set 'args[0]=--kubelet-insecure-tls' --wait
 
 for service in gateway operator integration-worker feature-gateway storage-proxy metrics-collector trace-proxy; do
   docker build --build-arg "SERVICE=$service" -t "mlaiops/$service:dev" "$ROOT"
   kind load docker-image --name "$CLUSTER" "mlaiops/$service:dev"
 done
+docker build -f "$ROOT/python/agent_runtime/Dockerfile" -t mlaiops/agent-runtime:dev "$ROOT"
+kind load docker-image --name "$CLUSTER" mlaiops/agent-runtime:dev
 
 "${KUBECTL[@]}" apply -f "$ROOT/config/network"
 "${KUBECTL[@]}" apply -f "$ROOT/config/deploy"
 "${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-operator operator=mlaiops/operator:dev
 "${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-gateway gateway=mlaiops/gateway:dev
 "${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-integration-worker worker=mlaiops/integration-worker:dev
+"${KUBECTL[@]}" -n mlaiops-system set env deployment/mlaiops-operator TRACE_PROXY_IMAGE=mlaiops/trace-proxy:dev
 "${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-feature-gateway feature-gateway=mlaiops/feature-gateway:dev
 "${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-storage-proxy storage-proxy=mlaiops/storage-proxy:dev
 "${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-metrics-collector collector=mlaiops/metrics-collector:dev

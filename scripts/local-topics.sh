@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BROKER="${KAFKA_BROKER:-localhost:9092}"
 topics=(
   mlaiops.audit.operations
@@ -20,8 +21,19 @@ topics=(
   mlaiops.recs.results
 )
 
+existing="$(docker compose -f "$ROOT/deploy/compose.yaml" exec -T kafka \
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" --list)"
+
 for topic in "${topics[@]}"; do
-  docker compose -f deploy/compose.yaml exec -T kafka \
+  if printf '%s\n' "$existing" | grep -Fqx "$topic"; then
+    continue
+  fi
+  output="$(docker compose -f "$ROOT/deploy/compose.yaml" exec -T kafka \
     /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" \
-    --create --if-not-exists --topic "$topic" --partitions 3 --replication-factor 1
+    --create --if-not-exists --topic "$topic" --partitions 3 --replication-factor 1 2>&1)" || {
+      printf '%s\n' "$output" >&2
+      exit 1
+    }
+  printf '%s\n' "$output" | sed '/^WARNING: Due to limitations in metric names/d'
+  existing="${existing}"$'\n'"${topic}"
 done

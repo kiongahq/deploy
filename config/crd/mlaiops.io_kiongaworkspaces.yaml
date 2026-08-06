@@ -1,15 +1,15 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: nexusworkspaces.mlaiops.io
+  name: kiongaworkspaces.mlaiops.io
 spec:
   group: mlaiops.io
   scope: Namespaced
   names:
-    plural: nexusworkspaces
-    singular: nexusworkspace
-    kind: NexusWorkspace
-    shortNames: [nws]
+    plural: kiongaworkspaces
+    singular: kiongaworkspace
+    kind: KiongaWorkspace
+    shortNames: [kws]
   versions:
     - name: v1alpha1
       served: true

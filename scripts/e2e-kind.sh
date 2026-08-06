@@ -21,8 +21,8 @@ kubectl config get-contexts "$CONTEXT" >/dev/null 2>&1 || {
 KUBECTL=(kubectl --context "$CONTEXT")
 "${KUBECTL[@]}" cluster-info >/dev/null
 
-"${KUBECTL[@]}" wait --for=condition=Established crd/nexusagents.mlaiops.io --timeout=90s
-"${KUBECTL[@]}" wait --for=condition=Established crd/nexusworkspaces.mlaiops.io --timeout=90s
+"${KUBECTL[@]}" wait --for=condition=Established crd/kiongaagents.mlaiops.io --timeout=90s
+"${KUBECTL[@]}" wait --for=condition=Established crd/kiongaworkspaces.mlaiops.io --timeout=90s
 "${KUBECTL[@]}" wait --for=condition=Available deployment/mlaiops-operator -n mlaiops-system --timeout=180s
 
 namespace="e2e-$RANDOM"
@@ -32,25 +32,28 @@ trap cleanup EXIT
 
 cat <<YAML | "${KUBECTL[@]}" apply -f -
 apiVersion: mlaiops.io/v1alpha1
-kind: NexusAgent
+kind: KiongaAgent
 metadata:
   name: e2e-agent
   namespace: ${namespace}
 spec:
   version: "1"
-  image: nginx:1.27-alpine
-  graphModule: agents.e2e:graph
+  image: mlaiops/agent-runtime:dev
+  graphModule: agents.customer_support.graph:build
   replicas: {min: 1, max: 2}
-  llm: {backend: self-hosted}
+  llm: {backend: mock}
 YAML
 
-"${KUBECTL[@]}" wait --for=condition=Ready nexusagent/e2e-agent -n "$namespace" --timeout=180s
-"${KUBECTL[@]}" get deployment e2e-agent-1 -n "$namespace"
-"${KUBECTL[@]}" get service e2e-agent-1 -n "$namespace"
+"${KUBECTL[@]}" wait --for=condition=Ready kiongaagent/e2e-agent -n "$namespace" --timeout=180s
+agent_workload="$("${KUBECTL[@]}" get kiongaagent e2e-agent -n "$namespace" -o jsonpath='{.status.workloadRef}')"
+test -n "$agent_workload"
+"${KUBECTL[@]}" get deployment "$agent_workload" -n "$namespace"
+"${KUBECTL[@]}" get service "$agent_workload" -n "$namespace"
+"${KUBECTL[@]}" get horizontalpodautoscaler "$agent_workload" -n "$namespace"
 
 cat <<YAML | "${KUBECTL[@]}" apply -f -
 apiVersion: mlaiops.io/v1alpha1
-kind: NexusWorkspace
+kind: KiongaWorkspace
 metadata:
   name: e2e-workspace
   namespace: ${namespace}
@@ -61,7 +64,7 @@ spec:
   storageGB: 10
 YAML
 
-"${KUBECTL[@]}" wait --for=condition=Ready nexusworkspace/e2e-workspace -n "$namespace" --timeout=180s
+"${KUBECTL[@]}" wait --for=condition=Ready kiongaworkspace/e2e-workspace -n "$namespace" --timeout=180s
 "${KUBECTL[@]}" get deployment e2e-workspace -n "$namespace"
 "${KUBECTL[@]}" get service e2e-workspace -n "$namespace"
 "${KUBECTL[@]}" get persistentvolumeclaim e2e-workspace -n "$namespace"

@@ -1,15 +1,15 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: nexusagents.mlaiops.io
+  name: kiongaagents.mlaiops.io
 spec:
   group: mlaiops.io
   scope: Namespaced
   names:
-    plural: nexusagents
-    singular: nexusagent
-    kind: NexusAgent
-    shortNames: [nagent]
+    plural: kiongaagents
+    singular: kiongaagent
+    kind: KiongaAgent
+    shortNames: [kagent]
   versions:
     - name: v1alpha1
       served: true
@@ -33,16 +33,20 @@ spec:
           properties:
             spec:
               type: object
-              required: [image, graphModule, version]
+              required: [image, graphModule, version, replicas]
               properties:
                 version: {type: string, minLength: 1}
                 image: {type: string, minLength: 1}
                 graphModule: {type: string, minLength: 1}
                 replicas:
                   type: object
+                  required: [min, max]
+                  x-kubernetes-validations:
+                    - rule: self.max >= self.min
+                      message: max replicas must be greater than or equal to min replicas
                   properties:
-                    min: {type: integer, minimum: 1, default: 1}
-                    max: {type: integer, minimum: 1, default: 10}
+                    min: {type: integer, minimum: 1, maximum: 100}
+                    max: {type: integer, minimum: 1, maximum: 100}
                 llm:
                   type: object
                   properties:
@@ -56,6 +60,23 @@ spec:
                     properties:
                       name: {type: string}
                       version: {type: string}
+                resources:
+                  type: object
+                  properties:
+                    requests:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-int-or-string: true
+                        anyOf:
+                          - type: integer
+                          - type: string
+                    limits:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-int-or-string: true
+                        anyOf:
+                          - type: integer
+                          - type: string
                 langfuseProject: {type: string}
                 trafficPolicy:
                   type: object
@@ -66,6 +87,7 @@ spec:
               type: object
               properties:
                 phase: {type: string}
+                workloadRef: {type: string}
                 readyReplicas: {type: integer}
                 observedGeneration: {type: integer, format: int64}
                 conditions:

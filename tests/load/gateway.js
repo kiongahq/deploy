@@ -1,4 +1,4 @@
-// k6 load + pressure test for the Nexus control plane.
+// k6 load + pressure test for the Kionga control plane.
 //
 //   k6 run tests/load/gateway.js                  # full run (~5 min)
 //   k6 run -e PROFILE=smoke tests/load/gateway.js # short CI-friendly run (~90s)

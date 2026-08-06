@@ -14,6 +14,12 @@ spec:
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 8082}
         - {protocol: TCP, port: 443}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - {protocol: TCP, port: 80}
     - to: []
       ports:
         - {protocol: UDP, port: 53}

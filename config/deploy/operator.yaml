@@ -18,6 +18,7 @@ spec:
           args: [--leader-elect=true, --metrics-bind-address=:8080, --health-probe-bind-address=:8082]
           env:
             - {name: ENVIRONMENT, value: production}
+            - {name: TRACE_PROXY_IMAGE, value: "ghcr.io/mlaiops/trace-proxy:latest"}
             - {name: KFP_URL, value: "http://ml-pipeline.kubeflow:8888"}
             - {name: MLFLOW_URL, value: "http://mlflow.mlaiops-system:5000"}
             - {name: MLAIOPS_URL, value: "http://mlaiops-gateway.mlaiops-system:8080"}

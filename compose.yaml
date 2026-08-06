@@ -50,16 +50,35 @@ services:
       retries: 20
 
   kafka-rest:
-    image: confluentinc/cp-kafka-rest:7.8.0
+    # Karapace is an Apache-licensed, Confluent-v2-compatible Kafka REST proxy.
+    # Its multi-architecture image is substantially smaller than the JVM proxy
+    # image, which keeps a cold local bootstrap practical on laptops.
+    image: ghcr.io/aiven-open/karapace:6.1.4
+    entrypoint: [python3, -m, karapace.kafka_rest_apis]
     depends_on:
       kafka: {condition: service_healthy}
     environment:
-      KAFKA_REST_HOST_NAME: kafka-rest
-      KAFKA_REST_BOOTSTRAP_SERVERS: kafka:9092
+      KARAPACE_KARAPACE_REST: "true"
+      KARAPACE_KARAPACE_REGISTRY: "false"
+      KARAPACE_HOST: 0.0.0.0
+      KARAPACE_PORT: 8082
+      KARAPACE_ADVERTISED_HOSTNAME: kafka-rest
+      KARAPACE_ADVERTISED_PROTOCOL: http
+      KARAPACE_REST_BASE_URI: http://kafka-rest:8082
+      KARAPACE_BOOTSTRAP_URI: kafka:9092
+      KARAPACE_CLIENT_ID: kionga-kafka-rest
+      KARAPACE_LOG_LEVEL: INFO
+      KARAPACE_PRODUCER_ACKS: all
+      KARAPACE_KAFKA_RETRIABLE_ERRORS_SILENCED: "true"
     ports: ["${KAFKA_REST_PORT:-8082}:8082"]
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8082/_health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-05-24T17-08-30Z
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: mlaiops
@@ -68,7 +87,7 @@ services:
     volumes: [minio-data:/data]
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z
+    image: minio/mc:RELEASE.2025-07-16T15-35-03Z
     depends_on:
       minio: {condition: service_started}
     entrypoint: >
@@ -113,7 +132,7 @@ services:
       args: {SERVICE: gateway}
     depends_on:
       postgres: {condition: service_healthy}
-      kafka-rest: {condition: service_started}
+      kafka-rest: {condition: service_healthy}
     environment:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
@@ -207,20 +226,32 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      DOCKER_HOST: unix:///var/run/docker.sock
+      MLAIOPS_PIPELINE_NETWORK: mlaiops_default
+      MLAIOPS_PIPELINE_LOG_LIMIT_BYTES: ${MLAIOPS_PIPELINE_LOG_LIMIT_BYTES:-65536}
+      MLAIOPS_PIPELINE_JOB_TIMEOUT_SECONDS: ${MLAIOPS_PIPELINE_JOB_TIMEOUT_SECONDS:-3600}
+      MLAIOPS_PIPELINE_PIDS_LIMIT: ${MLAIOPS_PIPELINE_PIDS_LIMIT:-256}
+    # Docker-socket access is a deliberate root-equivalent trust boundary for the
+    # local/single-operator profile, not multi-tenant isolation. User job containers
+    # never receive the socket, drop all capabilities, use no-new-privileges and a
+    # bounded PID limit, and are removed after every attempt.
+    user: "0:0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
   serving-manager:
     build:
       context: ..
       args: {SERVICE: serving-manager}
-    # Root inside this one container: the Docker socket requires it. This is
-    # the only service with engine access (mirrors the storage proxy's role
-    # as sole credential holder).
+    # Root inside this designated engine-control service: the Docker socket
+    # requires it. The pipeline-runner is the only other socket consumer.
     user: "0:0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       SERVE_IMAGE: mlaiops-mlflow
+      SERVE_PIDS_LIMIT: ${SERVE_PIDS_LIMIT:-256}
       PLATFORM_NETWORK: mlaiops_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -330,7 +361,7 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      NEXUS_CUSTOM_AGENT_COMMAND: ${NEXUS_CUSTOM_AGENT_COMMAND:-}
+      KIONGA_CUSTOM_AGENT_COMMAND: ${KIONGA_CUSTOM_AGENT_COMMAND:-}
     ports: ["${JUPYTER_PORT:-8888}:8888"]
     volumes:
       - jupyter-data:/workspace
@@ -349,8 +380,8 @@ services:
       PASSWORD: ${IDE_PASSWORD:-mlaiops-local}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      NEXUS_CUSTOM_AGENT_COMMAND: ${NEXUS_CUSTOM_AGENT_COMMAND:-}
-      NEXUS_WORKSPACE: /workspace
+      KIONGA_CUSTOM_AGENT_COMMAND: ${KIONGA_CUSTOM_AGENT_COMMAND:-}
+      KIONGA_WORKSPACE: /workspace
       MLAIOPS_URL: http://gateway:8080
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
