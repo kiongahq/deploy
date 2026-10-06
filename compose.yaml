@@ -87,19 +87,20 @@ services:
     volumes: [minio-data:/data]
 
   minio-init:
-    image: minio/mc:RELEASE.2025-07-16T15-35-03Z
+    # Reuse the MLflow build (which includes boto3) instead of pulling a
+    # separate mc image. The upstream minio/mc repository may be unavailable.
+    image: mlaiops-mlflow
+    build:
+      context: mlflow
     depends_on:
       minio: {condition: service_started}
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 mlaiops mlaiops-local-secret; do sleep 2; done;
-      mc mb --ignore-existing local/mlaiops-models;
-      mc mb --ignore-existing local/mlaiops-artifacts;
-      mc mb --ignore-existing local/mlaiops-features;
-      mc mb --ignore-existing local/mlaiops-traces;
-      mc mb --ignore-existing local/mlaiops-agents;
-      mc mb --ignore-existing local/mlaiops-pipeline-logs;
-      exit 0;"
+    entrypoint: [python, /bootstrap/minio-init.py]
+    environment:
+      AWS_ACCESS_KEY_ID: mlaiops
+      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      MINIO_ENDPOINT: http://minio:9000
+    volumes:
+      - ./minio-init.py:/bootstrap/minio-init.py:ro
 
   mlflow:
     image: mlaiops-mlflow
@@ -283,9 +284,8 @@ services:
     restart: unless-stopped
 
   feature-materializer:
-    build:
-      context: ..
-      dockerfile: python/agent_runtime/Dockerfile
+    # The agent runtime already contains python/features and the same SDK extras.
+    image: mlaiops-agent-runtime
     depends_on:
       gateway: {condition: service_started}
       feature-gateway: {condition: service_started}
@@ -315,6 +315,7 @@ services:
     ports: ["${TRACE_PROXY_PORT:-8081}:8081"]
 
   agent-runtime:
+    image: mlaiops-agent-runtime
     build:
       context: ..
       dockerfile: python/agent_runtime/Dockerfile

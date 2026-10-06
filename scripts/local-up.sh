@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT/deploy/compose.yaml"
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
+GATEWAY_PORT_EXPLICIT="${GATEWAY_PORT+x}"
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 REBUILD="${KIONGA_REBUILD:-0}"
 
@@ -53,14 +54,57 @@ warn_low_disk_space() {
   fi
 }
 
+port_available() {
+  python3 -c 'import socket, sys; s = socket.socket(); s.bind(("0.0.0.0", int(sys.argv[1])))' "$1" \
+    >/dev/null 2>&1
+}
+
+choose_gateway_port() {
+  local candidate configured existing
+  configured="$(compose config --format json | python3 -c 'import json,sys; p=json.load(sys.stdin)["services"]["gateway"]["ports"]; print(next(str(x["published"]) for x in p if int(x["target"]) == 8080))')" \
+    || fail 'could not resolve the gateway port from Docker Compose'
+  if [[ -z "$GATEWAY_PORT_EXPLICIT" && "$configured" != 8080 ]]; then
+    GATEWAY_PORT_EXPLICIT=1 # A port set in .env is also an explicit choice.
+  fi
+  GATEWAY_PORT="$configured"
+  existing="$(compose port gateway 8080 2>/dev/null | sed -n '1s/.*://p' || true)"
+  if port_available "$GATEWAY_PORT" || [[ "$existing" == "$GATEWAY_PORT" ]]; then
+    return 0
+  fi
+  if [[ -n "$GATEWAY_PORT_EXPLICIT" ]]; then
+    fail "gateway port $GATEWAY_PORT is in use. Choose another, e.g. GATEWAY_PORT=18080 make local-up."
+  fi
+  if [[ "$existing" =~ ^1808[0-4]$ ]]; then
+    GATEWAY_PORT="$existing"
+    export GATEWAY_PORT
+    printf 'Port 8080 is in use; reusing gateway port %s.\n' "$GATEWAY_PORT"
+    return 0
+  fi
+  for candidate in 18080 18081 18082 18083 18084; do
+    if port_available "$candidate"; then
+      GATEWAY_PORT="$candidate"
+      export GATEWAY_PORT
+      printf 'Port 8080 is in use; using gateway port %s instead.\n' "$GATEWAY_PORT"
+      return 0
+    fi
+  done
+  fail 'gateway ports 8080 and 18080-18084 are occupied; set GATEWAY_PORT to a free port.'
+}
+
 retry() {
   local description="$1"
   shift
-  local attempt delay
+  local attempt delay status
   for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
     printf '\n==> %s (attempt %d/%d)\n' "$description" "$attempt" "$MAX_ATTEMPTS"
     if "$@"; then
       return 0
+    else
+      status=$?
+    fi
+    if ((status == 2)); then
+      printf 'Permanent failure during "%s"; check the image reference or registry access.\n' "$description" >&2
+      return 2
     fi
     if ((attempt == MAX_ATTEMPTS)); then
       return 1
@@ -73,7 +117,7 @@ retry() {
 }
 
 pull_missing_upstream_images() {
-  local image missing=0
+  local image missing=0 output
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
     # Compose-generated images for repository build contexts use this prefix;
@@ -89,17 +133,52 @@ pull_missing_upstream_images() {
     printf 'All upstream images are cached; skipping registry checks.\n'
     return 0
   fi
-  compose pull --ignore-buildable --policy missing
+  if output="$(compose pull --ignore-buildable --policy missing 2>&1)"; then
+    printf '%s\n' "$output"
+    return 0
+  fi
+  printf '%s\n' "$output" >&2
+  if [[ "$output" =~ (pull\ access\ denied|repository\ does\ not\ exist|manifest\ unknown|manifest\ .*not\ found) ]]; then
+    return 2
+  fi
+  return 1
 }
 
 start_platform() {
   local -a args=(up --detach --pull never --remove-orphans)
   case "$REBUILD" in
     1|true|TRUE|yes|YES) args+=(--build) ;;
-    0|false|FALSE|no|NO) ;;
+    0|false|FALSE|no|NO)
+      if all_images_cached; then
+        args+=(--no-build)
+      fi
+      ;;
     *) fail "KIONGA_REBUILD must be 0/false or 1/true (received '$REBUILD')" ;;
   esac
+  if [[ " ${args[*]} " != *' --no-build '* ]]; then
+    check_build_context
+  fi
   compose "${args[@]}"
+}
+
+all_images_cached() {
+  local image
+  while IFS= read -r image; do
+    [[ -n "$image" ]] || continue
+    docker image inspect "$image" >/dev/null 2>&1 || return 1
+  done < <(compose config --images | sort -u)
+}
+
+check_build_context() {
+  # iCloud can evict tracked files under ~/Documents. Buildx then appears to
+  # hang at "load .dockerignore" rather than reporting a useful error.
+  [[ "$(uname -s)" == Darwin ]] || return 0
+  local file
+  for file in "$ROOT/.dockerignore" "$ROOT/Dockerfile"; do
+    if [[ -n "$(find "$file" -flags +dataless -print 2>/dev/null)" ]]; then
+      fail "$file is an iCloud dataless file. Download it in Finder (or move the repo to a non-iCloud folder) before building."
+    fi
+  done
 }
 
 diagnostics() {
@@ -150,6 +229,7 @@ main() {
   docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (the 'docker compose' command was not found)."
   docker info >/dev/null 2>&1 || fail "Docker is installed but its daemon is not running. Start Docker and run 'make local-up' again."
   warn_low_disk_space
+  choose_gateway_port
 
   printf 'Starting Kionga with at most %s concurrent image downloads.\n' "$COMPOSE_PARALLEL_LIMIT"
   retry "Download missing upstream images" \
