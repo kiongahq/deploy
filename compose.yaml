@@ -318,12 +318,15 @@ services:
     build:
       context: ..
       dockerfile: python/agent_runtime/Dockerfile
+      args:
+        SDK_EXTRAS: ${AGENT_RUNTIME_EXTRAS:-runtime}
     depends_on:
       postgres: {condition: service_healthy}
       trace-proxy: {condition: service_started}
     environment:
       MLAIOPS_GRAPH_MODULE: ${MLAIOPS_GRAPH_MODULE:-agents.customer_support.graph:build}
       MLAIOPS_AGENT_NAME: customer-support
+      AGNO_MODEL: ${AGNO_MODEL:-}
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLAIOPS_AGENT_ID: ${MLAIOPS_AGENT_ID:-}
