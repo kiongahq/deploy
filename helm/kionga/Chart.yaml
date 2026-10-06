@@ -1,0 +1,7 @@
+apiVersion: v2
+name: kionga
+description: Kionga production control plane and Kubernetes workload controllers
+type: application
+version: 0.1.0
+appVersion: "0.2.0"
+kubeVersion: '>=1.29.0-0'

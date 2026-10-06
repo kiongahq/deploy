@@ -1,0 +1,118 @@
+# Supply immutable images and real non-secret endpoint configuration in an overlay.
+# Infrastructure engines/databases are prerequisites, not silently installed demos.
+workspaceNamespace: kionga-workloads
+storageClass: ""
+imagePullSecrets: []
+images:
+  gateway: ""
+  operator: ""
+  integration-worker: ""
+  feature-gateway: ""
+  storage-proxy: ""
+  trace-proxy: ""
+  jupyter: ""
+  ide: ""
+config:
+  KIONGA_ENVIRONMENT: production
+  OIDC_ISSUER: ""
+  OIDC_JWKS_URL: ""
+  OIDC_AUDIENCE: kionga
+  OIDC_CLIENT_ID: kionga
+  OIDC_AUTH_URL: ""
+  OIDC_TOKEN_URL: ""
+  OIDC_REDIRECT_URL: ""
+  MLAIOPS_ALLOWED_ORIGIN: ""
+  KAFKA_REST_URL: ""
+  MLFLOW_URL: ""
+  PREFECT_API_URL: ""
+  KFP_URL: ""
+  S3_ENDPOINT: ""
+  S3_REGION: us-east-1
+  KIONGA_TRUSTED_WORKSPACE_PROXY: "false"
+  KIONGA_WORKSPACE_BASE_DOMAIN: ""
+# Secret objects are created outside Helm, manually or through External Secrets.
+secretNames:
+  gateway: kionga-gateway
+  operator: kionga-operator
+  integration-worker: kionga-worker
+  feature-gateway: kionga-features
+  storage-proxy: kionga-storage
+  trace-proxy: kionga-tracing
+components:
+  gateway:
+    replicas: 3
+    port: 8080
+    health: /api/v1/health
+    ready: /api/v1/ready
+    secrets: [DATABASE_URL, OIDC_CLIENT_SECRET, MLAIOPS_INTERNAL_TOKEN, KIONGA_CREDENTIAL_KEY]
+  operator:
+    replicas: 2
+    port: 8082
+    health: /healthz
+    ready: /readyz
+    secrets: []
+  integration-worker:
+    replicas: 2
+    port: 8086
+    health: /healthz
+    ready: /readyz
+    secrets: []
+  feature-gateway:
+    replicas: 2
+    port: 8083
+    health: /healthz
+    ready: /healthz
+    secrets: [REDIS_URL, MLAIOPS_INTERNAL_TOKEN]
+  storage-proxy:
+    replicas: 2
+    port: 8084
+    health: /healthz
+    ready: /healthz
+    secrets: [S3_ACCESS_KEY, S3_SECRET_KEY, MLAIOPS_INTERNAL_TOKEN]
+  trace-proxy:
+    replicas: 2
+    port: 8081
+    health: /healthz
+    ready: /healthz
+    secrets: []
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {cpu: "1", memory: 512Mi}
+ingress:
+  enabled: true
+  className: ""
+  host: ""
+  tlsSecretName: kionga-tls
+  annotations: {}
+  controllerNamespace: ingress-system
+workspaceIngress:
+  enabled: false
+  baseDomain: ""
+  tlsSecretName: kionga-workspace-tls
+  annotations: {}
+monitoring:
+  enabled: false
+  namespace: monitoring
+  selectorLabels: {release: prometheus}
+gatewayAutoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  cpuPercent: 70
+networkPolicy:
+  enabled: true
+  # Explicit destination CIDRs/ports for DB, IdP, Kafka REST, engines, object
+  # storage, and Kubernetes API. Empty denies external traffic (DNS excepted).
+  externalEgress: []
+workspaceQuota:
+  requests.cpu: "64"
+  requests.memory: 128Gi
+  requests.storage: 2Ti
+  pods: "100"
+  persistentvolumeclaims: "100"
+externalSecrets:
+  enabled: false
+  storeName: kionga-store
+  storeKind: SecretStore
+  # name -> list of {secretKey: DATABASE_URL, remoteRef: {key: path, property: field}}
+  targets: {}

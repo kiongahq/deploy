@@ -1,0 +1,101 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-operator
+  namespace: {{ .Values.workspaceNamespace }}
+rules:
+  - apiGroups: [mlaiops.io]
+    resources: [kiongaagents, kiongaagents/status, kiongaworkspaces, kiongaworkspaces/status, kiongapipelineruns, kiongapipelineruns/status, kiongamodelpromotions, kiongamodelpromotions/status, kiongatools, kiongatools/status, kiongaconnections, kiongaconnections/status]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [services, persistentvolumeclaims, secrets, configmaps, events]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.istio.io]
+    resources: [virtualservices, destinationrules]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [serving.kserve.io]
+    resources: [inferenceservices]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-operator
+  namespace: {{ .Values.workspaceNamespace }}
+subjects:
+  - {kind: ServiceAccount, name: {{ .Release.Name }}-operator, namespace: {{ .Release.Namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-operator}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-worker
+  namespace: {{ .Values.workspaceNamespace }}
+rules:
+  - apiGroups: [mlaiops.io]
+    resources: [kiongaagents, kiongaworkspaces, kiongapipelineruns, kiongamodelpromotions, kiongatools, kiongaconnections]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-worker
+  namespace: {{ .Values.workspaceNamespace }}
+subjects:
+  - {kind: ServiceAccount, name: {{ .Release.Name }}-integration-worker, namespace: {{ .Release.Namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-worker}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-discovery
+  namespace: {{ .Values.workspaceNamespace }}
+rules:
+  - apiGroups: [mlaiops.io]
+    resources: [kiongaworkspaces]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-discovery
+  namespace: {{ .Values.workspaceNamespace }}
+subjects:
+  - {kind: ServiceAccount, name: {{ .Release.Name }}-gateway, namespace: {{ .Release.Namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-discovery}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-leader
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  # The namespaced informer cache also lists these in the control namespace.
+  - apiGroups: [networking.istio.io, serving.kserve.io]
+    resources: [virtualservices, destinationrules, inferenceservices]
+    verbs: [get, list, watch]
+  - apiGroups: [mlaiops.io, apps, autoscaling, ""]
+    resources: [kiongaagents, kiongaworkspaces, kiongapipelineruns, kiongamodelpromotions, kiongatools, kiongaconnections, deployments, horizontalpodautoscalers, services, persistentvolumeclaims, secrets, configmaps]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-leader
+subjects:
+  - {kind: ServiceAccount, name: {{ .Release.Name }}-operator, namespace: {{ .Release.Namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-leader}

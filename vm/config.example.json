@@ -1,0 +1,13 @@
+{
+  "KIONGA_ENVIRONMENT": "production",
+  "MLAIOPS_TENANT": "default",
+  "MLAIOPS_ALLOWED_ORIGIN": "https://kionga.example.com",
+  "OIDC_ISSUER": "https://identity.example.com/realms/kionga",
+  "OIDC_JWKS_URL": "https://identity.example.com/realms/kionga/protocol/openid-connect/certs",
+  "OIDC_AUDIENCE": "kionga",
+  "OIDC_CLIENT_ID": "kionga",
+  "OIDC_AUTH_URL": "https://identity.example.com/realms/kionga/protocol/openid-connect/auth",
+  "OIDC_TOKEN_URL": "https://identity.example.com/realms/kionga/protocol/openid-connect/token",
+  "OIDC_REDIRECT_URL": "https://kionga.example.com/auth/callback",
+  "KIONGA_TRUSTED_WORKSPACE_PROXY": "false"
+}

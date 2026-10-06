@@ -1,0 +1,13 @@
+{
+    email {$KIONGA_ACME_EMAIL}
+    admin off
+}
+{$KIONGA_DOMAIN} {
+    encode gzip
+    header Strict-Transport-Security "max-age=31536000"
+    reverse_proxy gateway:8080 {
+        health_uri /api/v1/ready
+        health_interval 10s
+        health_timeout 3s
+    }
+}

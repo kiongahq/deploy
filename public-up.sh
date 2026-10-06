@@ -6,6 +6,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Production uses non-secret deployment JSON and externally delivered secret files.
+# The old demo overlay is retained only behind an explicit acknowledgement.
+if [[ "${KIONGA_LEGACY_PUBLIC_DEPLOY:-0}" != 1 ]]; then
+  [[ $# -eq 1 ]] || { echo "Usage: bash deploy/public-up.sh /etc/kionga/deployment.json (see docs/hosting.md)" >&2; exit 1; }
+  exec python3 deploy/vm/up.py "$1"
+fi
+echo "WARNING: legacy development-derived public overlay; not the supported production path" >&2
+
 if [[ ! -f .env ]]; then
   echo "error: .env not found. Copy .env.example to .env and fill it in." >&2
   exit 1

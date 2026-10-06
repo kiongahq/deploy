@@ -1,0 +1,77 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  annotations: {{ toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ required "ingress.className is required" .Values.ingress.className }}
+  tls:
+    - hosts: [{{ required "ingress.host is required" .Values.ingress.host | quote }}]
+      secretName: {{ required "ingress.tlsSecretName is required" .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-gateway
+                port: {number: 8080}
+{{- end }}
+{{- if .Values.workspaceIngress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-workspaces
+  annotations: {{ toYaml .Values.workspaceIngress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ required "ingress.className is required" .Values.ingress.className }}
+  tls:
+    - hosts: [{{ printf "*.%s" .Values.workspaceIngress.baseDomain | quote }}]
+      secretName: {{ required "workspaceIngress.tlsSecretName is required" .Values.workspaceIngress.tlsSecretName }}
+  rules:
+    - host: {{ printf "*.%s" .Values.workspaceIngress.baseDomain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-gateway
+                port: {number: 8080}
+{{- end }}
+{{- if .Values.gatewayAutoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-gateway
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: {{ .Release.Name }}-gateway}
+  minReplicas: {{ .Values.gatewayAutoscaling.minReplicas }}
+  maxReplicas: {{ .Values.gatewayAutoscaling.maxReplicas }}
+  behavior:
+    scaleDown: {stabilizationWindowSeconds: 300}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ .Values.gatewayAutoscaling.cpuPercent }}}
+{{- end }}
+{{- if .Values.externalSecrets.enabled }}
+{{- range $name, $data := .Values.externalSecrets.targets }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ $name }}
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {name: {{ $.Values.externalSecrets.storeName }}, kind: {{ $.Values.externalSecrets.storeKind }}}
+  target: {name: {{ $name }}, creationPolicy: Owner, deletionPolicy: Retain}
+  data: {{ toYaml $data | nindent 4 }}
+{{- end }}
+{{- end }}

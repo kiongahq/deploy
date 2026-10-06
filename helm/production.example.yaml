@@ -1,0 +1,63 @@
+# Replace every digest, host, endpoint and CIDR. This is not a live release.
+images:
+  gateway: ghcr.io/ml-ai-ops/gateway@sha256:REPLACE
+  operator: ghcr.io/ml-ai-ops/operator@sha256:REPLACE
+  integration-worker: ghcr.io/ml-ai-ops/integration-worker@sha256:REPLACE
+  feature-gateway: ghcr.io/ml-ai-ops/feature-gateway@sha256:REPLACE
+  storage-proxy: ghcr.io/ml-ai-ops/storage-proxy@sha256:REPLACE
+  trace-proxy: ghcr.io/ml-ai-ops/trace-proxy@sha256:REPLACE
+  jupyter: ghcr.io/ml-ai-ops/jupyter@sha256:REPLACE
+  ide: ghcr.io/ml-ai-ops/ide@sha256:REPLACE
+storageClass: encrypted-expandable
+ingress:
+  className: your-ingress-class
+  host: kionga.example.com
+  controllerNamespace: ingress-system
+  tlsSecretName: kionga-tls
+workspaceIngress:
+  enabled: true
+  baseDomain: workspaces.example.com
+  tlsSecretName: kionga-workspace-tls
+monitoring:
+  enabled: true
+  namespace: monitoring
+  selectorLabels: {release: prometheus}
+config:
+  MLAIOPS_ALLOWED_ORIGIN: https://kionga.example.com
+  OIDC_REDIRECT_URL: https://kionga.example.com/auth/callback
+  OIDC_ISSUER: https://identity.example.com/realms/kionga
+  OIDC_JWKS_URL: https://identity.example.com/realms/kionga/protocol/openid-connect/certs
+  OIDC_AUTH_URL: https://identity.example.com/realms/kionga/protocol/openid-connect/auth
+  OIDC_TOKEN_URL: https://identity.example.com/realms/kionga/protocol/openid-connect/token
+  KIONGA_WORKSPACE_BASE_DOMAIN: workspaces.example.com
+  KAFKA_REST_URL: https://kafka-rest.internal.example.com
+  MLFLOW_URL: https://mlflow.internal.example.com
+  PREFECT_API_URL: https://prefect.internal.example.com/api
+  S3_ENDPOINT: https://object-store.internal.example.com
+  LLM_UPSTREAM_URL: https://inference.internal.example.com
+  WORKSPACE_FEATURE_URL: http://kionga-feature-gateway.kionga-system.svc:8083
+  WORKSPACE_STORAGE_URL: http://kionga-storage-proxy.kionga-system.svc:8084
+  WORKSPACE_MLFLOW_URL: https://mlflow.internal.example.com
+  WORKSPACE_PREFECT_URL: https://prefect.internal.example.com/api
+  WORKSPACE_LANGFUSE_URL: https://langfuse.internal.example.com
+  WORKSPACE_KAFKA_REST_URL: https://kafka-rest.internal.example.com
+networkPolicy:
+  externalEgress:
+    - to: [{ipBlock: {cidr: 192.0.2.0/24}}] # Replace; include cluster API address/port.
+      ports: [{port: 443}, {port: 5432}, {port: 6443}, {port: 6379}]
+externalSecrets:
+  enabled: true
+  storeName: kionga-store
+  targets:
+    kionga-gateway:
+      - {secretKey: DATABASE_URL, remoteRef: {key: kionga-production, property: database_url}}
+      - {secretKey: OIDC_CLIENT_SECRET, remoteRef: {key: kionga-production, property: oidc_client_secret}}
+      - {secretKey: MLAIOPS_INTERNAL_TOKEN, remoteRef: {key: kionga-production, property: internal_token}}
+      - {secretKey: KIONGA_CREDENTIAL_KEY, remoteRef: {key: kionga-production, property: credential_key}}
+    kionga-features:
+      - {secretKey: REDIS_URL, remoteRef: {key: kionga-production, property: redis_url}}
+      - {secretKey: MLAIOPS_INTERNAL_TOKEN, remoteRef: {key: kionga-production, property: internal_token}}
+    kionga-storage:
+      - {secretKey: S3_ACCESS_KEY, remoteRef: {key: kionga-production, property: s3_access_key}}
+      - {secretKey: S3_SECRET_KEY, remoteRef: {key: kionga-production, property: s3_secret_key}}
+      - {secretKey: MLAIOPS_INTERNAL_TOKEN, remoteRef: {key: kionga-production, property: internal_token}}

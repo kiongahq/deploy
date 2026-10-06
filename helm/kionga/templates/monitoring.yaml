@@ -1,0 +1,52 @@
+{{- if .Values.monitoring.enabled }}
+{{- range $name, $port := dict "gateway" 9090 "operator" 8080 "integration-worker" 8086 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}-metrics
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ $.Values.monitoring.namespace }}}
+      ports: [{port: {{ $port }}}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}
+  labels: {{ toYaml $.Values.monitoring.selectorLabels | nindent 4 }}
+spec:
+  namespaceSelector: {matchNames: [{{ $.Release.Namespace }}]}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
+  endpoints:
+    - port: {{ if eq $name "integration-worker" }}http{{ else }}metrics{{ end }}
+      path: /metrics
+      interval: 30s
+{{- end }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-availability
+  labels: {{ toYaml .Values.monitoring.selectorLabels | nindent 4 }}
+spec:
+  groups:
+    - name: kionga.availability
+      rules:
+        - alert: KiongaGatewayBelowTwoReplicas
+          expr: (kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}",deployment="{{ .Release.Name }}-gateway"} < 2) or absent(kube_deployment_status_replicas_available{namespace="{{ .Release.Namespace }}",deployment="{{ .Release.Name }}-gateway"})
+          for: 5m
+          labels: {severity: critical}
+          annotations: {summary: "Kionga has fewer than two available gateway replicas"}
+        - alert: KiongaWorkerPollStale
+          expr: (time() - min(kionga_worker_last_success_timestamp_seconds{namespace="{{ .Release.Namespace }}"}) > 90) or absent(kionga_worker_last_success_timestamp_seconds{namespace="{{ .Release.Namespace }}"})
+          for: 3m
+          labels: {severity: critical}
+          annotations: {summary: "Kionga Kafka lifecycle worker has not polled successfully"}
+{{- end }}

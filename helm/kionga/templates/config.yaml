@@ -1,0 +1,43 @@
+{{- if eq .Release.Namespace .Values.workspaceNamespace }}
+{{- fail "workspaceNamespace must differ from the control-plane namespace" }}
+{{- end }}
+{{- range $name, $image := .Values.images }}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $image) }}
+{{- fail (printf "images.%s must be an immutable repository@sha256:digest" $name) }}
+{{- end }}
+{{- end }}
+{{- if ne .Values.config.KIONGA_ENVIRONMENT "production" }}{{ fail "production mode is required" }}{{ end }}
+{{- if not .Values.storageClass }}{{ fail "storageClass must be explicitly configured" }}{{ end }}
+{{- range $name, $component := .Values.components }}
+{{- if lt (int $component.replicas) 2 }}{{ fail (printf "components.%s.replicas must be at least 2" $name) }}{{ end }}
+{{- end }}
+{{- if and .Values.gatewayAutoscaling.enabled (lt (int .Values.gatewayAutoscaling.minReplicas) 2) }}{{ fail "gatewayAutoscaling.minReplicas must be at least 2" }}{{ end }}
+{{- if and .Values.workspaceIngress.enabled (ne .Values.config.KIONGA_WORKSPACE_BASE_DOMAIN .Values.workspaceIngress.baseDomain) }}{{ fail "workspaceIngress.baseDomain must match config.KIONGA_WORKSPACE_BASE_DOMAIN" }}{{ end }}
+{{- if and .Values.workspaceIngress.enabled (not .Values.workspaceIngress.baseDomain) }}{{ fail "workspaceIngress.baseDomain is required" }}{{ end }}
+{{- if and .Values.config.KIONGA_WORKSPACE_BASE_DOMAIN (not .Values.workspaceIngress.enabled) }}{{ fail "workspaceIngress must be enabled when KIONGA_WORKSPACE_BASE_DOMAIN is configured" }}{{ end }}
+{{- if and .Values.workspaceIngress.enabled (eq .Values.config.KIONGA_TRUSTED_WORKSPACE_PROXY "true") }}{{ fail "isolated workspace ingress requires the trusted same-origin proxy disabled" }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  config.json: {{ .Values.config | toJson | quote }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.workspaceNamespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Release.Name }}-workspaces
+  namespace: {{ .Values.workspaceNamespace }}
+spec:
+  hard:
+{{ toYaml .Values.workspaceQuota | indent 4 }}
