@@ -20,6 +20,8 @@ spec:
               kubernetes.io/metadata.name: default
       ports:
         - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: 8888}
     - to: []
       ports:
         - {protocol: UDP, port: 53}

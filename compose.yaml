@@ -137,6 +137,11 @@ services:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
       MLAIOPS_TENANT: local
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_JUPYTER_UPSTREAM: http://jupyter:8888
+      KIONGA_CREDENTIAL_KEY: ${KIONGA_CREDENTIAL_KEY:-}
+      KIONGA_IDE_UPSTREAM: http://ide:8080
+      KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
       STORAGE_PROXY_URL: http://storage-proxy:8084
       PREFECT_API_URL: http://prefect-server:4200/api
@@ -222,6 +227,7 @@ services:
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       MLAIOPS_URL: http://gateway:8080
+      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: mlaiops
@@ -270,6 +276,7 @@ services:
     environment:
       KAFKA_REST_URL: http://kafka-rest:8082
       MLAIOPS_URL: http://gateway:8080
+      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       CALLCENTER_AGENT_ID: ${CALLCENTER_AGENT_ID:-}
       FRAUD_MODEL_ENDPOINT: ${FRAUD_MODEL_ENDPOINT:-}
@@ -287,6 +294,7 @@ services:
       MLAIOPS_URL: http://gateway:8080
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       MLAIOPS_STORAGE_PROXY_URL: http://storage-proxy:8084
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
     entrypoint: ["python", "-m", "features.materialize"]
     restart: "no"
 
@@ -316,6 +324,8 @@ services:
     environment:
       MLAIOPS_GRAPH_MODULE: ${MLAIOPS_GRAPH_MODULE:-agents.customer_support.graph:build}
       MLAIOPS_AGENT_NAME: customer-support
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLAIOPS_AGENT_ID: ${MLAIOPS_AGENT_ID:-}
       MLAIOPS_URL: http://gateway:8080
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
@@ -362,7 +372,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       KIONGA_CUSTOM_AGENT_COMMAND: ${KIONGA_CUSTOM_AGENT_COMMAND:-}
-    ports: ["${JUPYTER_PORT:-8888}:8888"]
+    ports: ["127.0.0.1:${JUPYTER_PORT:-8888}:8888"]
     volumes:
       - jupyter-data:/workspace
       - workspace-codex:/home/dev/.codex
@@ -378,6 +388,7 @@ services:
       dockerfile: deploy/ide/Dockerfile
     environment:
       PASSWORD: ${IDE_PASSWORD:-mlaiops-local}
+      KIONGA_IDE_AUTH_MODE: none
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       KIONGA_CUSTOM_AGENT_COMMAND: ${KIONGA_CUSTOM_AGENT_COMMAND:-}
@@ -387,7 +398,7 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
-    ports: ["${IDE_PORT:-13337}:8080"]
+    expose: ["8080"]
     volumes:
       - jupyter-data:/workspace
       - workspace-codex:/home/coder/.codex

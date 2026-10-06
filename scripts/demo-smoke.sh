@@ -11,6 +11,28 @@
 set -uo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
+gateway_auth=()
+if [[ -n "${MLAIOPS_TOKEN:-}" ]]; then
+  gateway_auth=(-H "Authorization: Bearer ${MLAIOPS_TOKEN}")
+else
+  login_cookie="$(command curl -sS -D - -o /dev/null \
+    --data-urlencode "username=${MLAIOPS_LOCAL_USERNAME:-admin}" \
+    --data-urlencode "password=${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}" \
+    "$GATEWAY/auth/local/login" | tr -d '\r' | awk 'tolower($1)=="set-cookie:" {print $2}' | cut -d';' -f1)"
+  if [[ -z "$login_cookie" ]]; then
+    printf 'Sign-in failed. Set MLAIOPS_TOKEN to a scoped API key, or supply the local login credentials.\n' >&2
+    exit 1
+  fi
+  gateway_auth=(-H "Cookie: $login_cookie")
+fi
+# Only the gateway receives platform credentials; downstream service probes do not.
+curl() {
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "$GATEWAY/"* ]]; then command curl "${gateway_auth[@]}" "$@"; return; fi
+  done
+  command curl "$@"
+}
 FEATURES="${FEATURES:-http://localhost:8083}"
 PASS=0; FAIL=0; SKIP=0
 
