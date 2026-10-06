@@ -1,0 +1,4 @@
+# Layer over production.example.yaml on AKS Linux node pools with Azure Disk CSI.
+storageClass: kionga-azuredisk-premium
+ingress:
+  className: nginx # Change if using another ingress controller.

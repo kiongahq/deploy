@@ -1,0 +1,4 @@
+# Layer over production.example.yaml on GKE Standard with PD CSI enabled.
+storageClass: kionga-pd-balanced
+ingress:
+  className: nginx # Change if using another ingress controller.

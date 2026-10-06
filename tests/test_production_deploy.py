@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("vm_deploy", ROOT / "deploy/vm/up.py")
 vm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vm)
+cloud_spec = importlib.util.spec_from_file_location("cloud_preflight", ROOT / "scripts/cloud-preflight.py")
+cloud = importlib.util.module_from_spec(cloud_spec)
+cloud_spec.loader.exec_module(cloud)
 
 
 def vm_inputs(tmp_path):
@@ -119,3 +122,80 @@ def test_chart_refuses_unpinned_default_images():
                             capture_output=True, text=True)
     assert result.returncode != 0
     assert "immutable" in result.stderr
+
+
+@pytest.mark.parametrize("provider,provisioner", [
+    ("eks", "ebs.csi.aws.com"), ("gke", "pd.csi.storage.gke.io"),
+    ("aks", "disk.csi.azure.com"),
+])
+def test_provider_overlay_and_storage_class(provider, provisioner, tmp_path):
+    overlay = yaml.safe_load((ROOT / f"deploy/helm/providers/{provider}.example.yaml").read_text())
+    storage = yaml.safe_load((ROOT / f"deploy/helm/providers/{provider}-storageclass.example.yaml").read_text())
+    assert overlay["storageClass"] == storage["metadata"]["name"]
+    assert storage["provisioner"] == provisioner
+    assert storage["allowVolumeExpansion"] is True
+    assert storage["volumeBindingMode"] == "WaitForFirstConsumer"
+    assert storage["reclaimPolicy"] == "Retain"
+
+
+def test_eks_preflight_fails_without_network_policy(monkeypatch):
+    class Args:
+        cluster = "staging"
+        region = "us-east-1"
+        context = "staging"
+
+    def fake_command(*argv):
+        if "describe-cluster" in argv:
+            return {"cluster": {"status": "ACTIVE", "arn": "arn:aws:eks:us-east-1:123:cluster/staging", "endpoint": "https://eks.example", "identity": {"oidc": {"issuer": "https://oidc.example"}}}}
+        if "list-open-id-connect-providers" in argv:
+            return {"OpenIDConnectProviderList": [{"Arn": "arn:aws:iam::123:oidc-provider/oidc.example"}]}
+        return {"addon": {"status": "ACTIVE", "configurationValues": "{}"}}
+
+    monkeypatch.setattr(cloud, "command", fake_command)
+    monkeypatch.setattr(cloud, "check_context_endpoint", lambda *_: None)
+    with pytest.raises(ValueError, match="NetworkPolicy is disabled"):
+        cloud.check_eks(Args())
+
+
+def test_cloud_common_rejects_single_zone(monkeypatch):
+    def fake_command(*argv):
+        if "nodes" in argv:
+            return {"items": [{"metadata": {"labels": {"topology.kubernetes.io/zone": "a"}},
+                               "status": {"conditions": [{"type": "Ready", "status": "True"}]}}] * 3}
+        raise AssertionError("StorageClass must not be reached")
+
+    monkeypatch.setattr(cloud, "command", fake_command)
+    with pytest.raises(ValueError, match="two zones"):
+        cloud.check_common("staging", "storage", "csi.example")
+
+
+@pytest.mark.parametrize("provider,payload", [
+    ("gke", {"status": "RUNNING", "endpoint": "10.0.0.1",
+             "workloadIdentityConfig": {"workloadPool": "project.svc.id.goog"},
+             "networkConfig": {"datapathProvider": "ADVANCED_DATAPATH"},
+             "addonsConfig": {"gcePersistentDiskCsiDriverConfig": {"enabled": True}}}),
+    ("aks", {"provisioningState": "Succeeded", "fqdn": "aks.example",
+             "oidcIssuerProfile": {"enabled": True},
+             "securityProfile": {"workloadIdentity": {"enabled": True}},
+             "networkProfile": {"networkPolicy": "cilium"}}),
+])
+def test_other_provider_preflights(provider, payload, monkeypatch):
+    class Args:
+        cluster = "staging"
+        project = "project"
+        location = "region"
+        resource_group = "group"
+        context = "staging"
+
+    monkeypatch.setattr(cloud, "command", lambda *_: payload)
+    monkeypatch.setattr(cloud, "check_context_endpoint", lambda *_: None)
+    getattr(cloud, f"check_{provider}")(Args())
+
+
+def test_cloud_context_rejects_different_cluster(monkeypatch):
+    class Result:
+        stdout = "https://unexpected.example"
+
+    monkeypatch.setattr(cloud.subprocess, "run", lambda *_, **__: Result())
+    with pytest.raises(ValueError, match="different cluster"):
+        cloud.check_context_endpoint("staging", "https://expected.example")

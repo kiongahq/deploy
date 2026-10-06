@@ -1,0 +1,4 @@
+# Layer over production.example.yaml. Managed EC2 node groups, not EKS Auto Mode.
+storageClass: kionga-ebs-gp3
+ingress:
+  className: nginx # Change if using another ingress controller.

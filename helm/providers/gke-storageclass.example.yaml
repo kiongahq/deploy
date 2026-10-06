@@ -1,0 +1,11 @@
+# Requires the GCE PD CSI driver. PD is zonal and RWO.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: kionga-pd-balanced
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-balanced
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
