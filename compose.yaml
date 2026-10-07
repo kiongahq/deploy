@@ -129,7 +129,8 @@ services:
 
   gateway:
     build:
-      context: ..
+      context: ../go
+      dockerfile: Dockerfile
       args: {SERVICE: gateway}
     depends_on:
       postgres: {condition: service_healthy}
@@ -388,8 +389,10 @@ services:
   ide:
     profiles: [ide]
     build:
-      context: ..
-      dockerfile: deploy/ide/Dockerfile
+      context: .
+      dockerfile: ide/Dockerfile
+      args:
+        INSTALL_CODING_AGENTS: ${KIONGA_IDE_AGENTS:-false}
     environment:
       PASSWORD: ${IDE_PASSWORD:-mlaiops-local}
       KIONGA_IDE_AUTH_MODE: none
