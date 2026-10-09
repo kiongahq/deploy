@@ -14,6 +14,7 @@ BUCKETS = (
     "mlaiops-traces",
     "mlaiops-agents",
     "mlaiops-pipeline-logs",
+    "kionga-blog-media",
 )
 
 
