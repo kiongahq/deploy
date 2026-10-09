@@ -86,30 +86,46 @@ services:
       timeout: 5s
       retries: 20
 
-  minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
-    command: server /data --console-address :9001
+  # S3-compatible object store: RustFS (Apache-2.0). MinIO stopped publishing
+  # images in 2026; data from an existing MinIO volume moves over with
+  # scripts/migrate-minio-to-rustfs.sh. The `minio` alias keeps older
+  # http://objectstore:9000 settings working.
+  objectstore:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
     environment:
-      MINIO_ROOT_USER: mlaiops
-      MINIO_ROOT_PASSWORD: mlaiops-local-secret
-    ports: ["${MINIO_PORT:-9000}:9000", "${MINIO_CONSOLE_PORT:-9001}:9001"]
-    volumes: [minio-data:/data]
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      RUSTFS_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+    ports: ["${OBJECTSTORE_PORT:-9000}:9000", "${OBJECTSTORE_CONSOLE_PORT:-9001}:9001"]
+    volumes: [objectstore-data:/data]
+    networks:
+      default:
+        aliases: [minio]
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:9000/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
 
-  minio-init:
-    # Reuse the MLflow build (which includes boto3) instead of pulling a
-    # separate mc image. The upstream minio/mc repository may be unavailable.
+  objectstore-init:
+    # Creates the platform buckets (idempotent). Reuses the MLflow build, which
+    # already includes boto3.
     image: mlaiops-mlflow
     build:
       context: mlflow
     depends_on:
-      minio: {condition: service_started}
-    entrypoint: [python, /bootstrap/minio-init.py]
+      objectstore: {condition: service_healthy}
+    entrypoint: [python, /bootstrap/objectstore-init.py]
     environment:
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
-      MINIO_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      S3_ENDPOINT: http://objectstore:9000
     volumes:
-      - ./minio-init.py:/bootstrap/minio-init.py:ro
+      - ./objectstore-init.py:/bootstrap/objectstore-init.py:ro
 
   mlflow:
     image: mlaiops-mlflow
@@ -117,7 +133,7 @@ services:
       context: mlflow
     depends_on:
       postgres: {condition: service_healthy}
-      minio-init: {condition: service_completed_successfully}
+      objectstore-init: {condition: service_completed_successfully}
     command:
       - mlflow
       - server
@@ -126,7 +142,7 @@ services:
       - --backend-store-uri=postgresql://mlaiops:mlaiops-local@postgres:5432/mlaiops
       - --default-artifact-root=s3://mlaiops-models
     environment:
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
     ports: ["${MLFLOW_PORT:-15000}:5000"]
@@ -144,7 +160,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       kafka-rest: {condition: service_healthy}
-      minio-init: {condition: service_completed_successfully}
+      objectstore-init: {condition: service_completed_successfully}
     environment:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
@@ -174,9 +190,9 @@ services:
       MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}
       # Engineering blog media (images) live in object storage.
       KIONGA_BLOG_MEDIA_BACKEND: s3
-      KIONGA_BLOG_MEDIA_S3_ENDPOINT: http://minio:9000
-      KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-mlaiops}
-      KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-mlaiops-local-secret}
+      KIONGA_BLOG_MEDIA_S3_ENDPOINT: http://objectstore:9000
+      KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
     ports: ["${GATEWAY_PORT:-8080}:8080"]
 
@@ -235,9 +251,9 @@ services:
       dockerfile: Dockerfile
       args: {SERVICE: storage-proxy}
     depends_on:
-      minio: {condition: service_started}
+      objectstore: {condition: service_healthy}
     environment:
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://objectstore:9000
       S3_ACCESS_KEY: mlaiops
       S3_SECRET_KEY: mlaiops-local-secret
     ports: ["${STORAGE_PROXY_PORT:-8084}:8084"]
@@ -289,7 +305,7 @@ services:
       MLAIOPS_URL: http://gateway:8080
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
       DOCKER_HOST: unix:///var/run/docker.sock
@@ -319,7 +335,7 @@ services:
       SERVE_PIDS_LIMIT: ${SERVE_PIDS_LIMIT:-256}
       PLATFORM_NETWORK: mlaiops_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
     ports: ["${SERVING_MANAGER_PORT:-8085}:8085"]
@@ -407,7 +423,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
-    # host 19000: MinIO owns host port 9000
+    # host 19000: the object store owns host port 9000
     ports: ["${AGENT_RUNTIME_PORT:-19000}:9000"]
 
   jupyter:
@@ -429,10 +445,10 @@ services:
       MLAIOPS_URL: http://gateway:8080
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://objectstore:9000
       S3_MOUNT_ROOT: /workspace/object-store
       S3_MOUNT_BUCKETS: mlaiops-models mlaiops-artifacts mlaiops-features mlaiops-traces mlaiops-agents mlaiops-pipeline-logs
       KAFKA_REST_URL: http://kafka-rest:8082
@@ -480,7 +496,7 @@ services:
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
       MLAIOPS_URL: http://gateway:8080
       MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
     expose: ["8080"]
@@ -492,7 +508,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  objectstore-data:
   prefect-data:
   jupyter-data:
   workspace-codex:

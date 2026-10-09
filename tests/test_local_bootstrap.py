@@ -39,7 +39,7 @@ def compose_config(*profiles: str) -> dict:
 def test_compose_reuses_existing_images_for_bucket_init_and_materializer():
     config = compose_config()
     services = config["services"]
-    assert services["minio-init"]["image"] == services["mlflow"]["image"]
+    assert services["objectstore-init"]["image"] == services["mlflow"]["image"]
     assert services["feature-materializer"]["image"] == services["agent-runtime"]["image"]
     assert "minio/mc" not in json.dumps(config)
 
@@ -73,12 +73,20 @@ def test_every_build_comes_from_a_component_repo():
             assert (Path(extra) / ".git").exists(), (name, extra)
 
 
-def test_bucket_bootstrap_is_idempotent(monkeypatch):
-    pytest.importorskip("boto3")
-    spec = importlib.util.spec_from_file_location("minio_init", ROOT / "minio-init.py")
+def _load_objectstore_init():
+    spec = importlib.util.spec_from_file_location("objectstore_init", ROOT / "objectstore-init.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    created = []
+    return module
+
+
+@pytest.mark.parametrize("exists_code", ["BucketAlreadyOwnedByYou", "BucketAlreadyExists"])
+def test_bucket_bootstrap_is_idempotent(monkeypatch, exists_code):
+    """Both codes S3 stores use for "you already have it" are accepted (RustFS
+    and MinIO differ), and every platform bucket is requested."""
+    pytest.importorskip("boto3")
+    module = _load_objectstore_init()
+    created, endpoints = [], []
 
     class Client:
         def list_buckets(self):
@@ -88,14 +96,48 @@ def test_bucket_bootstrap_is_idempotent(monkeypatch):
             created.append(Bucket)
             if Bucket == module.BUCKETS[0]:
                 raise module.ClientError(
-                    {"Error": {"Code": "BucketAlreadyOwnedByYou", "Message": "exists"}},
-                    "CreateBucket",
-                )
+                    {"Error": {"Code": exists_code, "Message": "exists"}}, "CreateBucket")
 
-    monkeypatch.setenv("MINIO_ENDPOINT", "http://minio:9000")
-    monkeypatch.setattr(module.boto3, "client", lambda *_, **__: Client())
+    monkeypatch.setenv("S3_ENDPOINT", "http://objectstore:9000")
+    monkeypatch.setattr(module.boto3, "client",
+                        lambda *_, endpoint_url, **__: endpoints.append(endpoint_url) or Client())
     module.main()
     assert tuple(created) == module.BUCKETS
+    assert endpoints == ["http://objectstore:9000"]
+
+
+def test_bucket_bootstrap_rejects_other_errors(monkeypatch):
+    pytest.importorskip("boto3")
+    module = _load_objectstore_init()
+
+    class Client:
+        def list_buckets(self):
+            return {"Buckets": []}
+
+        def create_bucket(self, *, Bucket):
+            raise module.ClientError({"Error": {"Code": "AccessDenied", "Message": "no"}}, "CreateBucket")
+
+    monkeypatch.setenv("S3_ENDPOINT", "http://objectstore:9000")
+    monkeypatch.setattr(module.boto3, "client", lambda *_, **__: Client())
+    with pytest.raises(module.ClientError):
+        module.main()
+
+
+def test_object_store_is_pinned_rustfs_and_every_client_uses_it():
+    """MinIO images are no longer pullable; RustFS is pinned by digest, keeps the
+    `minio` alias for older settings, and every S3 client points at it."""
+    services = compose_config("ide")["services"]
+    store = services["objectstore"]
+    assert store["image"].startswith("rustfs/rustfs:1.0.1@sha256:")
+    assert not [n for n, s in services.items() if "minio/" in s.get("image", "")]
+    assert "minio" in store["networks"]["default"]["aliases"]
+    assert store["healthcheck"]["test"][-1].endswith("/health")
+    assert services["objectstore-init"]["depends_on"]["objectstore"]["condition"] == "service_healthy"
+    endpoint_vars = {"MLFLOW_S3_ENDPOINT_URL", "S3_ENDPOINT", "KIONGA_BLOG_MEDIA_S3_ENDPOINT"}
+    endpoints = {(n, k): v for n, s in services.items()
+                 for k, v in (s.get("environment") or {}).items() if k in endpoint_vars}
+    assert endpoints, "no S3 clients found"
+    assert set(endpoints.values()) == {"http://objectstore:9000"}, endpoints
 
 
 def _load_build_inputs():

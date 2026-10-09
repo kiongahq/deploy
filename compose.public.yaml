@@ -56,7 +56,7 @@ services:
   redis: {restart: unless-stopped}
   kafka: {restart: unless-stopped}
   kafka-rest: {restart: unless-stopped, ports: []}
-  minio: {restart: unless-stopped, ports: []}
+  objectstore: {restart: unless-stopped, ports: []}
   mlflow: {restart: unless-stopped, ports: []}
   langfuse:
     restart: unless-stopped

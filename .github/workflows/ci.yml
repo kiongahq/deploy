@@ -30,4 +30,4 @@ jobs:
       - run: python -m pytest -q tests
       - run: helm lint helm/kionga --strict
       - run: bash -n public-up.sh scripts/*.sh
-      - run: python -m py_compile vm/up.py scripts/verify-production.py scripts/cloud-preflight.py scripts/build_inputs.py minio-init.py
+      - run: python -m py_compile vm/up.py scripts/verify-production.py scripts/cloud-preflight.py scripts/build_inputs.py objectstore-init.py scripts/migrate_objects.py

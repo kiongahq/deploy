@@ -201,11 +201,21 @@ check_build_context() {
   [[ -z "$evicted" ]] || fail "$evicted is an iCloud dataless file. Move the checkouts out of iCloud before building."
 }
 
+# Before RustFS the bundled object store was MinIO. Its data stays in the old
+# volume until scripts/migrate-minio-to-rustfs.sh copies it across.
+warn_unmigrated_minio() {
+  local project="${COMPOSE_PROJECT_NAME:-mlaiops}"
+  docker volume inspect "${project}_minio-data" >/dev/null 2>&1 || return 0
+  [[ -f "$ROOT/.local-state/minio-migrated" ]] && return 0
+  printf 'Note: buckets from the old MinIO store (volume %s) are not in RustFS yet.\n' "${project}_minio-data" >&2
+  printf '      Copy them with: make migrate-minio   (the old volume is left untouched)\n' >&2
+}
+
 diagnostics() {
   printf '\n==> Service status\n' >&2
   compose ps --all >&2 || true
   printf '\n==> Recent bootstrap logs\n' >&2
-  compose logs --no-color --tail 40 gateway postgres kafka kafka-rest minio mlflow >&2 || true
+  compose logs --no-color --tail 40 gateway postgres kafka kafka-rest objectstore mlflow >&2 || true
 }
 
 published_port() {
@@ -269,6 +279,7 @@ main() {
     fail "the gateway did not become ready within ${START_TIMEOUT_SECONDS}s."
   fi
 
+  warn_unmigrated_minio
   retry "Create Kafka topics" bash "$ROOT/scripts/local-topics.sh" || {
     diagnostics
     fail "Kafka started, but its platform topics could not be created."

@@ -11,7 +11,7 @@ stack, a single production VM, and Kubernetes.
 | `helm/` | Kubernetes chart, production values example and EKS/GKE/AKS overlays |
 | `config/` | Cluster manifests: CRDs, RBAC, network policies, backups |
 | `kind/` | Local Kubernetes cluster for the fidelity path |
-| `mlflow/`, `postgres/`, `minio-init.py` | Images and bootstrap for the bundled data services |
+| `mlflow/`, `postgres/`, `objectstore-init.py` | Images and bootstrap for the bundled data services |
 | `scripts/` | Start-up, smoke, stress, kind and cloud preflight tooling |
 
 ## Run it locally
@@ -58,12 +58,34 @@ releases instead, which is what CI publishes.
 | MLflow | `15000` |
 | Prefect | `4200` |
 | Langfuse | `3000` |
-| MinIO API / console | `9000` / `9001` |
+| Object store (RustFS) S3 API / console | `9000` / `9001` |
 | trace-proxy, kafka-rest, feature-gateway, storage-proxy, serving-manager, log-exporter | `8081`-`8086` |
 
 `make local-status`, `make local-logs`, `make local-down`. Optional profiles:
 `make ide-up` (browser IDE), `--profile log-export` (log exporter, see the
 [log export guide](https://kiongahq.github.io/docs/operations/log-export/)).
+
+## Object storage
+
+The bundled S3-compatible store is [RustFS](https://github.com/rustfs/rustfs)
+(Apache-2.0), pinned by digest in `compose.yaml` as the `objectstore` service. It
+also answers to the old `minio` hostname, so `http://minio:9000` settings keep
+working. MinIO is no longer bundled: its images were removed from Docker Hub and
+quay.io stopped serving anonymous pulls in September 2026.
+
+If you ran Kionga with MinIO before, your buckets are still in the old
+`mlaiops_minio-data` volume and `make local-up` reminds you until they are copied:
+
+```bash
+make migrate-minio                 # needs the old MinIO image still on this machine
+tail -f /tmp/minio-to-rustfs/progress.log
+```
+
+It copies every bucket and object, verifies each by size and MD5, resumes if
+interrupted, and writes `report.csv` and `summary.json` to `/tmp/minio-to-rustfs/`.
+The MinIO volume is only read; delete it yourself when you are satisfied. Only the
+current version of each object is copied. To use another S3 store, point the
+`*_S3_ENDPOINT*` settings at it and drop the `objectstore` service.
 
 ## Single VM (production pilot)
 
