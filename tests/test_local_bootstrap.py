@@ -59,9 +59,11 @@ def test_every_build_comes_from_a_component_repo():
         if not build:
             continue
         context = Path(build["context"])
-        if context.is_relative_to(ROOT):
-            assert context == ROOT / "mlflow", name
-        else:
+        # The one image built from this repo. SRC can be this repo's parent
+        # (local) or sit inside it (CI clones components into ./src), so match
+        # it exactly rather than by prefix.
+        if context != ROOT / "mlflow":
+            assert context.is_relative_to(SRC), (name, context)
             repo = context.relative_to(SRC).parts[0]
             assert repo in COMPONENTS, (name, repo)
             component(repo)
