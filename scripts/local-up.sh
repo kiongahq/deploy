@@ -144,29 +144,42 @@ pull_missing_upstream_images() {
   return 1
 }
 
+BUILD_STATE="$ROOT/.local-state/build-inputs.json"
+
 start_platform() {
   local -a args=(up --detach --pull never --remove-orphans)
+  local stale=""
   case "$REBUILD" in
-    1|true|TRUE|yes|YES) args+=(--build) ;;
+    1|true|TRUE|yes|YES)
+      check_build_context
+      compose build
+      record_build_inputs
+      ;;
     0|false|FALSE|no|NO)
-      if all_images_cached; then
-        args+=(--no-build)
+      # A cached image is reused only while its Dockerfile and COPY inputs are
+      # unchanged; otherwise that service alone is rebuilt.
+      stale="$(stale_services)"
+      if [[ -n "$stale" ]]; then
+        printf 'Rebuilding images whose sources changed: %s\n' "$stale"
+        check_build_context
+        # shellcheck disable=SC2086
+        compose build $stale
+        # shellcheck disable=SC2086
+        record_build_inputs $stale
       fi
       ;;
     *) fail "KIONGA_REBUILD must be 0/false or 1/true (received '$REBUILD')" ;;
   esac
-  if [[ " ${args[*]} " != *' --no-build '* ]]; then
-    check_build_context
-  fi
+  args+=(--no-build)
   compose "${args[@]}"
 }
 
-all_images_cached() {
-  local image
-  while IFS= read -r image; do
-    [[ -n "$image" ]] || continue
-    docker image inspect "$image" >/dev/null 2>&1 || return 1
-  done < <(compose config --images | sort -u)
+stale_services() {
+  compose config --format json | python3 "$ROOT/scripts/build_inputs.py" stale --state "$BUILD_STATE"
+}
+
+record_build_inputs() {
+  compose config --format json | python3 "$ROOT/scripts/build_inputs.py" record --state "$BUILD_STATE" "$@"
 }
 
 check_build_context() {

@@ -385,6 +385,15 @@ services:
     cap_add: [SYS_ADMIN]
     devices: [/dev/fuse:/dev/fuse]
     security_opt: [apparmor:unconfined]
+    # Probe the same prefixed API the gateway proxies to. An image that
+    # predates the base_url (or a token mismatch) turns the service unhealthy
+    # instead of silently failing every console launch.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os,urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:8888/workspaces/workbench/api/status', headers={'Authorization': 'token ' + os.environ.get('JUPYTER_TOKEN', 'mlaiops-local')}), timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 4
 
   ide:
     profiles: [ide]
