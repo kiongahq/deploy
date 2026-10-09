@@ -21,7 +21,7 @@ EXISTS_CODES = {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}
 
 
 def main():
-    endpoint = os.environ.get("S3_ENDPOINT") or os.environ["MINIO_ENDPOINT"]
+    endpoint = os.environ["S3_ENDPOINT"]
     client = boto3.client("s3", endpoint_url=endpoint, region_name="us-east-1")
     deadline = time.monotonic() + 120
     while True:

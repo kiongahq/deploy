@@ -68,24 +68,12 @@ releases instead, which is what CI publishes.
 ## Object storage
 
 The bundled S3-compatible store is [RustFS](https://github.com/rustfs/rustfs)
-(Apache-2.0), pinned by digest in `compose.yaml` as the `objectstore` service. It
-also answers to the old `minio` hostname, so `http://minio:9000` settings keep
-working. MinIO is no longer bundled: its images were removed from Docker Hub and
-quay.io stopped serving anonymous pulls in September 2026.
-
-If you ran Kionga with MinIO before, your buckets are still in the old
-`mlaiops_minio-data` volume and `make local-up` reminds you until they are copied:
-
-```bash
-make migrate-minio                 # needs the old MinIO image still on this machine
-tail -f /tmp/minio-to-rustfs/progress.log
-```
-
-It copies every bucket and object, verifies each by size and MD5, resumes if
-interrupted, and writes `report.csv` and `summary.json` to `/tmp/minio-to-rustfs/`.
-The MinIO volume is only read; delete it yourself when you are satisfied. Only the
-current version of each object is copied. To use another S3 store, point the
-`*_S3_ENDPOINT*` settings at it and drop the `objectstore` service.
+(Apache-2.0), pinned by digest in `compose.yaml` as the `objectstore` service.
+New local installations use its `objectstore-data` volume directly. There is no
+legacy object-store service, alias, or migration step in `make local-up`. Existing
+Docker volumes are not deleted by startup or this source-tree consolidation.
+To use another S3-compatible store, point the `*_S3_ENDPOINT*` settings at it
+and drop the `objectstore` service.
 
 ## Single VM (production pilot)
 

@@ -90,6 +90,14 @@ else
 fi
 
 say "== 5. agent lifecycle"
+registered_tools=$(curl -sf "$GATEWAY/api/v1/tools")
+for tool in feature_store_lookup kb_search; do
+  if [[ "$(printf '%s' "$registered_tools" | jqget "any(i['name']=='$tool' for i in d['items'])")" != True ]]; then
+    tool_id=$(curl -sf -X POST "$GATEWAY/api/v1/tools" \
+      -d "{\"name\":\"$tool\",\"version\":\"1.0\",\"input_schema\":{\"type\":\"object\"}}" | jqget "d['id']")
+    [[ -n "$tool_id" ]] && ok "tool registered ($tool)" || bad "tool registration ($tool)"
+  fi
+done
 agent_id=$(curl -sf -X POST "$GATEWAY/api/v1/agents" \
   -d "{\"project_id\":\"$project_id\",\"name\":\"customer-support\",\"version\":\"1.0\",\"image\":\"mlaiops/agent-runtime\",\"graph_module\":\"agents.customer_support.graph:build\",\"llm_backend\":\"${MLAIOPS_LLM_BACKEND:-mock}\",\"tools\":[\"feature_store_lookup\",\"kb_search\"]}" | jqget "d['id']")
 if [[ -z "$agent_id" ]]; then

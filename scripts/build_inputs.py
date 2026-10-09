@@ -14,6 +14,7 @@ hash or the image ID no longer matches.
 Usage:
   compose config --format json | build_inputs.py stale  --state FILE
   compose config --format json | build_inputs.py record --state FILE SERVICE...
+  compose config --format json | build_inputs.py registry-images
 """
 
 from __future__ import annotations
@@ -101,11 +102,31 @@ def built_services(config: dict) -> dict[str, dict]:
     return {name: svc for name, svc in config["services"].items() if svc.get("build")}
 
 
+def registry_images(config: dict) -> list[str]:
+    """Images to pull: every image a service names that no service builds.
+
+    A service may reuse another service's local build by naming its image (the
+    feature materializer runs the agent-runtime image); that image must be built,
+    never pulled.
+    """
+    built = {svc.get("image") for svc in built_services(config).values() if svc.get("image")}
+    named = {svc["image"] for svc in config["services"].values() if svc.get("image")}
+    return sorted(named - built)
+
+
+def image_name(config: dict, service: str) -> str:
+    """The image a built service produces: its `image:`, else Compose's default
+    `<project>-<service>` (an empty name would never match, so the service
+    would be rebuilt on every start)."""
+    svc = config["services"][service]
+    return svc.get("image") or f"{config.get('name', '')}-{service}"
+
+
 def stale(config: dict, state: dict, lookup=image_id) -> list[str]:
     out = []
     for name, svc in sorted(built_services(config).items()):
         recorded = state.get(name) or {}
-        current_id = lookup(svc.get("image", ""))
+        current_id = lookup(image_name(config, name))
         if not current_id or recorded.get("image_id") != current_id \
                 or recorded.get("inputs") != service_hash(svc["build"]):
             out.append(name)
@@ -116,17 +137,24 @@ def record(config: dict, state: dict, services: list[str], lookup=image_id) -> d
     services_cfg = built_services(config)
     for name in services:
         svc = services_cfg[name]
-        state[name] = {"inputs": service_hash(svc["build"]), "image_id": lookup(svc.get("image", ""))}
+        state[name] = {"inputs": service_hash(svc["build"]), "image_id": lookup(image_name(config, name))}
     return state
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["stale", "record"])
+    parser.add_argument("command", choices=["stale", "record", "registry-images"])
     parser.add_argument("services", nargs="*")
-    parser.add_argument("--state", required=True, type=Path)
-    args = parser.parse_args(argv)
+    parser.add_argument("--state", type=Path)
+    # The shell passes `record --state FILE SERVICE...`; plain parse_args
+    # rejects the trailing services after an option with a nargs="*" positional.
+    args = parser.parse_intermixed_args(argv)
     config = json.load(sys.stdin)
+    if args.command == "registry-images":
+        print("\n".join(registry_images(config)))
+        return 0
+    if args.state is None:
+        parser.error("--state is required for stale and record")
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
     if args.command == "stale":
         print(" ".join(stale(config, state)))

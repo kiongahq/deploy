@@ -1,7 +1,7 @@
 # Run Kionga: the local stack from sibling checkouts, a single VM, or Kubernetes.
 .PHONY: workspace workspace-pull test local local-up local-rebuild local-down local-status local-logs \
         ide-up ide-agents-up ide-down public-up public-down kind-up k8s-tools test-e2e-kind \
-        test-load test-stress smoke migrate-minio
+        test-load test-stress smoke
 
 COMPOSE := docker compose -f compose.yaml
 
@@ -39,9 +39,6 @@ ide-agents-up:
 
 ide-down:
 	$(COMPOSE) --profile ide stop ide
-
-migrate-minio:             ## copy buckets from an old MinIO volume into RustFS (source untouched)
-	bash scripts/migrate-minio-to-rustfs.sh
 
 smoke:                     ## end-to-end smoke test against a running stack
 	GATEWAY=$${GATEWAY:-http://localhost:8080} bash scripts/demo-smoke.sh

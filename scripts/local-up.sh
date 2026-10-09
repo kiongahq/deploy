@@ -117,31 +117,30 @@ retry() {
 }
 
 pull_missing_upstream_images() {
-  local image missing=0 output
+  # Registry images only: anything no service builds (a service that reuses
+  # another service's local build must not be pulled; see build_inputs.py).
+  local image output status=0
+  local -a missing=()
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
-    # Compose-generated images for repository build contexts use this prefix;
-    # `compose up` builds them when absent. Only registry images belong here.
-    case "$image" in mlaiops-*) continue ;; esac
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
-      printf '  missing: %s\n' "$image"
-      missing=1
-    fi
-  done < <(compose config --images | sort -u)
+    docker image inspect "$image" >/dev/null 2>&1 || missing+=("$image")
+  done < <(compose config --format json | python3 "$ROOT/scripts/build_inputs.py" registry-images)
 
-  if ((missing == 0)); then
+  if ((${#missing[@]} == 0)); then
     printf 'All upstream images are cached; skipping registry checks.\n'
     return 0
   fi
-  if output="$(compose pull --ignore-buildable --policy missing 2>&1)"; then
-    printf '%s\n' "$output"
-    return 0
-  fi
-  printf '%s\n' "$output" >&2
-  if [[ "$output" =~ (pull\ access\ denied|repository\ does\ not\ exist|manifest\ unknown|manifest\ .*not\ found) ]]; then
-    return 2
-  fi
-  return 1
+  for image in "${missing[@]}"; do
+    printf '  pulling: %s\n' "$image"
+    if ! output="$(docker pull -q "$image" 2>&1)"; then
+      printf '%s\n' "$output" >&2
+      if [[ "$output" =~ (pull\ access\ denied|repository\ does\ not\ exist|manifest\ unknown|manifest\ .*not\ found) ]]; then
+        return 2
+      fi
+      status=1
+    fi
+  done
+  return "$status"
 }
 
 BUILD_STATE="$ROOT/.local-state/build-inputs.json"
@@ -151,21 +150,21 @@ start_platform() {
   local stale=""
   case "$REBUILD" in
     1|true|TRUE|yes|YES)
-      check_build_context
-      compose build
-      record_build_inputs
+      check_build_context || return 1
+      compose build || return 1
+      record_build_inputs || return 1
       ;;
     0|false|FALSE|no|NO)
       # A cached image is reused only while its Dockerfile and COPY inputs are
       # unchanged; otherwise that service alone is rebuilt.
-      stale="$(stale_services)"
+      stale="$(stale_services)" || return 1
       if [[ -n "$stale" ]]; then
         printf 'Rebuilding images whose sources changed: %s\n' "$stale"
-        check_build_context
+        check_build_context || return 1
         # shellcheck disable=SC2086
-        compose build $stale
+        compose build $stale || return 1
         # shellcheck disable=SC2086
-        record_build_inputs $stale
+        record_build_inputs $stale || return 1
       fi
       ;;
     *) fail "KIONGA_REBUILD must be 0/false or 1/true (received '$REBUILD')" ;;
@@ -199,16 +198,6 @@ check_build_context() {
   local evicted
   evicted="$(find "${REQUIRED_REPOS[@]/#/$KIONGA_SRC/}" -flags +dataless -not -path '*/.git/*' -print -quit 2>/dev/null || true)"
   [[ -z "$evicted" ]] || fail "$evicted is an iCloud dataless file. Move the checkouts out of iCloud before building."
-}
-
-# Before RustFS the bundled object store was MinIO. Its data stays in the old
-# volume until scripts/migrate-minio-to-rustfs.sh copies it across.
-warn_unmigrated_minio() {
-  local project="${COMPOSE_PROJECT_NAME:-mlaiops}"
-  docker volume inspect "${project}_minio-data" >/dev/null 2>&1 || return 0
-  [[ -f "$ROOT/.local-state/minio-migrated" ]] && return 0
-  printf 'Note: buckets from the old MinIO store (volume %s) are not in RustFS yet.\n' "${project}_minio-data" >&2
-  printf '      Copy them with: make migrate-minio   (the old volume is left untouched)\n' >&2
 }
 
 diagnostics() {
@@ -279,7 +268,6 @@ main() {
     fail "the gateway did not become ready within ${START_TIMEOUT_SECONDS}s."
   fi
 
-  warn_unmigrated_minio
   retry "Create Kafka topics" bash "$ROOT/scripts/local-topics.sh" || {
     diagnostics
     fail "Kafka started, but its platform topics could not be created."

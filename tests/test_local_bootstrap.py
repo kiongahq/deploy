@@ -1,6 +1,7 @@
 """Guard the small local startup path against removed registry images."""
 
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -124,13 +125,13 @@ def test_bucket_bootstrap_rejects_other_errors(monkeypatch):
 
 
 def test_object_store_is_pinned_rustfs_and_every_client_uses_it():
-    """MinIO images are no longer pullable; RustFS is pinned by digest, keeps the
-    `minio` alias for older settings, and every S3 client points at it."""
+    """RustFS is the only bundled object store and every S3 client uses it."""
     services = compose_config("ide")["services"]
     store = services["objectstore"]
     assert store["image"].startswith("rustfs/rustfs:1.0.1@sha256:")
     assert not [n for n, s in services.items() if "minio/" in s.get("image", "")]
-    assert "minio" in store["networks"]["default"]["aliases"]
+    network = (store.get("networks") or {}).get("default") or {}
+    assert "minio" not in network.get("aliases", [])
     assert store["healthcheck"]["test"][-1].endswith("/health")
     assert services["objectstore-init"]["depends_on"]["objectstore"]["condition"] == "service_healthy"
     endpoint_vars = {"MLFLOW_S3_ENDPOINT_URL", "S3_ENDPOINT", "KIONGA_BLOG_MEDIA_S3_ENDPOINT"}
@@ -138,6 +139,19 @@ def test_object_store_is_pinned_rustfs_and_every_client_uses_it():
                  for k, v in (s.get("environment") or {}).items() if k in endpoint_vars}
     assert endpoints, "no S3 clients found"
     assert set(endpoints.values()) == {"http://objectstore:9000"}, endpoints
+
+
+def test_local_startup_has_no_legacy_object_store_migration_path():
+    startup = (ROOT / "scripts/local-up.sh").read_text()
+    assert "warn_unmigrated_minio" not in startup
+    assert "migrate-minio" not in (ROOT / "Makefile").read_text()
+    assert "MINIO_ENDPOINT" not in (ROOT / "objectstore-init.py").read_text()
+    assert "record_build_inputs $stale || return 1" in startup
+
+
+def test_smoke_registers_tools_before_agent_deploy():
+    smoke = (ROOT / "scripts/demo-smoke.sh").read_text()
+    assert smoke.index("for tool in feature_store_lookup kb_search") < smoke.index('agent_id=$(curl')
 
 
 def _load_build_inputs():
@@ -221,3 +235,36 @@ def test_build_inputs_cover_every_compose_build():
     assert {"gateway", "jupyter", "ide"} <= set(built)
     for name, svc in built.items():
         assert len(module.service_hash(svc["build"])) == 64, name
+
+
+def test_registry_images_exclude_images_another_service_builds():
+    """Regression: a cold start pulled `mlaiops-agent-runtime` (named by the
+    feature materializer, built by agent-runtime) from Docker Hub and failed."""
+    module = _load_build_inputs()
+    config = {"services": {
+        "agent-runtime": {"image": "mlaiops-agent-runtime", "build": {"context": "."}},
+        "feature-materializer": {"image": "mlaiops-agent-runtime"},
+        "gateway": {"build": {"context": "."}},
+        "redis": {"image": "redis:7"},
+    }}
+    assert module.registry_images(config) == ["redis:7"]
+
+
+def test_record_accepts_service_names_after_state_option(tmp_path, monkeypatch):
+    """The exact local-up command must record named builds, not print an argparse error."""
+    module = _load_build_inputs()
+    state_file = tmp_path / "build-inputs.json"
+    monkeypatch.setattr(module.sys, "stdin", io.StringIO(json.dumps({"services": {"gateway": {"build": {}}}})))
+    monkeypatch.setattr(module, "record", lambda _config, _state, targets: {"selected": targets})
+    assert module.main(["record", "--state", str(state_file), "gateway"]) == 0
+    assert json.loads(state_file.read_text()) == {"selected": ["gateway"]}
+
+
+def test_registry_images_of_the_real_stack_are_all_pullable_names():
+    module = _load_build_inputs()
+    config = compose_config("ide")
+    images = module.registry_images(config)
+    built = {s["image"] for s in config["services"].values() if s.get("build") and s.get("image")}
+    assert "mlaiops-agent-runtime" in built and not set(images) & built
+    assert any(i.startswith("rustfs/rustfs:") for i in images)
+    assert all("/" in i or ":" in i for i in images), images

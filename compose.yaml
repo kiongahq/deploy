@@ -86,10 +86,7 @@ services:
       timeout: 5s
       retries: 20
 
-  # S3-compatible object store: RustFS (Apache-2.0). MinIO stopped publishing
-  # images in 2026; data from an existing MinIO volume moves over with
-  # scripts/migrate-minio-to-rustfs.sh. The `minio` alias keeps older
-  # http://objectstore:9000 settings working.
+  # Bundled S3-compatible object store: RustFS (Apache-2.0).
   objectstore:
     image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
     environment:
@@ -101,9 +98,6 @@ services:
       RUSTFS_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
     ports: ["${OBJECTSTORE_PORT:-9000}:9000", "${OBJECTSTORE_CONSOLE_PORT:-9001}:9001"]
     volumes: [objectstore-data:/data]
-    networks:
-      default:
-        aliases: [minio]
     healthcheck:
       test: [CMD, curl, -fsS, http://127.0.0.1:9000/health]
       interval: 5s
