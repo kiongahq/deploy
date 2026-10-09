@@ -5,9 +5,9 @@
 #   tail -f /tmp/minio-to-rustfs/progress.log         (progress, percent, ETA)
 #
 # The MinIO volume is only read and is never deleted, so rolling back means
-# pointing at it again. MinIO images can no longer be pulled anonymously, so
-# this needs the MinIO image already on this machine (MINIO_IMAGE), or any
-# MinIO-compatible image you can pull. Re-running resumes: objects already
+# pointing at it again. MinIO images can no longer be pulled from Docker Hub;
+# the script uses the stack's old image if it is still here, else Chainguard's
+# MinIO build (override with MINIO_IMAGE). Re-running resumes: objects already
 # copied and verified are skipped. Output: report.csv and summary.json in OUT.
 set -euo pipefail
 
@@ -15,7 +15,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 PROJECT="${COMPOSE_PROJECT_NAME:-mlaiops}"
 SRC_VOLUME="${MINIO_VOLUME:-${PROJECT}_minio-data}"
-MINIO_IMAGE="${MINIO_IMAGE:-minio/minio:RELEASE.2025-07-23T15-54-02Z}"
+PINNED_MINIO="minio/minio:RELEASE.2025-07-23T15-54-02Z"
+FALLBACK_MINIO="cgr.dev/chainguard/minio:latest"   # still pullable; only used to read the old volume
 OUT="${OUT:-/tmp/minio-to-rustfs}"
 NETWORK="${PROJECT}_default"
 SOURCE="kionga-minio-migration-source"
@@ -28,8 +29,15 @@ docker volume inspect "$SRC_VOLUME" >/dev/null 2>&1 || {
   echo "No MinIO volume '$SRC_VOLUME': nothing to migrate."
   exit 0
 }
-docker image inspect "$MINIO_IMAGE" >/dev/null 2>&1 || fail \
-  "MinIO image '$MINIO_IMAGE' is not on this machine and can no longer be pulled anonymously. Set MINIO_IMAGE to a MinIO image you have or can pull (for example cgr.dev/chainguard/minio)."
+# MinIO images can no longer be pulled from Docker Hub. Use MINIO_IMAGE if set,
+# else the image the stack used if it is still on this machine, else Chainguard's build.
+if [[ -z "${MINIO_IMAGE:-}" ]]; then
+  if docker image inspect "$PINNED_MINIO" >/dev/null 2>&1; then MINIO_IMAGE="$PINNED_MINIO"
+  else MINIO_IMAGE="$FALLBACK_MINIO"; fi
+fi
+docker image inspect "$MINIO_IMAGE" >/dev/null 2>&1 || docker pull -q "$MINIO_IMAGE" >/dev/null \
+  || fail "cannot get MinIO image '$MINIO_IMAGE'; set MINIO_IMAGE to one you can pull"
+echo "==> reading the old volume with $MINIO_IMAGE"
 docker image inspect mlaiops-mlflow >/dev/null 2>&1 || fail "mlaiops-mlflow image missing; run 'make local-up' once first."
 
 echo "==> starting the RustFS object store"
@@ -37,16 +45,20 @@ docker compose -f compose.yaml up -d --wait objectstore
 
 echo "==> starting a temporary MinIO on $SRC_VOLUME"
 docker rm -f "$SOURCE" >/dev/null 2>&1 || true
-docker run -d --rm --name "$SOURCE" --network "$NETWORK" \
+# Root because MinIO wrote the volume as root; images such as Chainguard's run as
+# an unprivileged user by default. The container is temporary and local-only.
+docker run -d --rm --name "$SOURCE" --network "$NETWORK" --user 0:0 \
   -v "$SRC_VOLUME:/data" -e "MINIO_ROOT_USER=$SRC_USER" -e "MINIO_ROOT_PASSWORD=$SRC_PASS" \
   "$MINIO_IMAGE" server /data >/dev/null
 trap 'docker stop "$SOURCE" >/dev/null 2>&1 || true' EXIT
-for _ in $(seq 1 60); do
-  docker exec "$SOURCE" curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1 && break
-  sleep 1
-done
-docker exec "$SOURCE" curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1 \
-  || fail "temporary MinIO did not become healthy; see: docker logs $SOURCE"
+# Probe from the network: minimal images have no curl.
+source_live() {
+  docker run --rm --network "$NETWORK" --entrypoint python mlaiops-mlflow -c \
+    "import urllib.request; urllib.request.urlopen('http://$SOURCE:9000/minio/health/live', timeout=3)" \
+    >/dev/null 2>&1
+}
+for _ in $(seq 1 30); do source_live && break; sleep 2; done
+source_live || fail "temporary MinIO did not become healthy; see: docker logs $SOURCE"
 
 mkdir -p "$OUT"
 echo "==> copying (follow with: tail -f $OUT/progress.log)"
