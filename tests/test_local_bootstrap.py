@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -9,40 +10,70 @@ import subprocess
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
+# Component checkouts sit beside this repo (make workspace), as compose.yaml expects.
+SRC = Path(os.environ.get("KIONGA_SRC") or ROOT.parent).resolve()
+COMPONENTS = {"platform", "serving", "trace-proxy", "agent-runtime", "pipeline-runner",
+              "sdk-python", "workspace"}
+
+
+def component(name: str) -> Path:
+    """A sibling checkout; missing ones fail loudly instead of skipping."""
+    path = SRC / name
+    assert (path / ".git").exists(), f"{path} is missing: run 'make workspace' (or set KIONGA_SRC)"
+    return path
+
+
+def compose_config(*profiles: str) -> dict:
+    if not shutil.which("docker"):
+        pytest.skip("Docker Compose is required for config validation")
+    args = ["docker", "compose", "-f", str(ROOT / "compose.yaml")]
+    for profile in profiles:
+        args += ["--profile", profile]
+    result = subprocess.run([*args, "config", "--format", "json"], cwd=ROOT,
+                            capture_output=True, text=True, check=True,
+                            env={**os.environ, "KIONGA_SRC": str(SRC)})
+    return json.loads(result.stdout)
 
 
 def test_compose_reuses_existing_images_for_bucket_init_and_materializer():
-    if not shutil.which("docker"):
-        pytest.skip("Docker Compose is required for config validation")
-    result = subprocess.run(
-        ["docker", "compose", "-f", str(ROOT / "deploy/compose.yaml"),
-         "config", "--format", "json"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    )
-    services = json.loads(result.stdout)["services"]
+    config = compose_config()
+    services = config["services"]
     assert services["minio-init"]["image"] == services["mlflow"]["image"]
     assert services["feature-materializer"]["image"] == services["agent-runtime"]["image"]
-    assert "minio/mc" not in result.stdout
+    assert "minio/mc" not in json.dumps(config)
 
 
 def test_ide_and_gateway_builds_use_small_contexts():
-    if not shutil.which("docker"):
-        pytest.skip("Docker Compose is required for config validation")
-    result = subprocess.run(
-        ["docker", "compose", "-f", str(ROOT / "deploy/compose.yaml"),
-         "--profile", "ide", "config", "--format", "json"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    )
-    services = json.loads(result.stdout)["services"]
-    assert services["ide"]["build"]["context"] == str(ROOT / "deploy")
+    services = compose_config("ide")["services"]
+    assert services["ide"]["build"]["context"] == str(SRC / "workspace")
     assert services["ide"]["build"]["args"]["INSTALL_CODING_AGENTS"] == "false"
-    assert services["gateway"]["build"]["context"] == str(ROOT / "go")
+    assert services["gateway"]["build"]["context"] == str(SRC / "platform" / "go")
+
+
+def test_every_build_comes_from_a_component_repo():
+    """Each image builds from one sibling repository (or this repo's own mlflow
+    image), and its Dockerfile and named contexts exist there."""
+    for name, svc in compose_config("ide")["services"].items():
+        build = svc.get("build")
+        if not build:
+            continue
+        context = Path(build["context"])
+        if context.is_relative_to(ROOT):
+            assert context == ROOT / "mlflow", name
+        else:
+            repo = context.relative_to(SRC).parts[0]
+            assert repo in COMPONENTS, (name, repo)
+            component(repo)
+        assert (context / build.get("dockerfile", "Dockerfile")).is_file(), name
+        for extra in (build.get("additional_contexts") or {}).values():
+            assert Path(extra).relative_to(SRC).parts[0] in COMPONENTS, (name, extra)
+            assert (Path(extra) / ".git").exists(), (name, extra)
 
 
 def test_bucket_bootstrap_is_idempotent(monkeypatch):
     pytest.importorskip("boto3")
-    spec = importlib.util.spec_from_file_location("minio_init", ROOT / "deploy/minio-init.py")
+    spec = importlib.util.spec_from_file_location("minio_init", ROOT / "minio-init.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     created = []
@@ -74,11 +105,11 @@ def _load_build_inputs():
 
 def test_jupyter_base_url_matches_gateway_proxy_prefix():
     """The gateway proxies and probes /workspaces/workbench/ unchanged."""
-    entrypoint = (ROOT / "deploy/jupyter/entrypoint.sh").read_text()
-    workspaces = (ROOT / "go/internal/httpapi/workspaces.go").read_text()
+    entrypoint = (component("workspace") / "jupyter/entrypoint.sh").read_text()
+    workspaces = (component("platform") / "go/internal/httpapi/workspaces.go").read_text()
     assert "--ServerApp.base_url=/workspaces/workbench/" in entrypoint
     assert '"/workspaces/workbench/api"' in workspaces
-    compose = (ROOT / "deploy/compose.yaml").read_text()
+    compose = (ROOT / "compose.yaml").read_text()
     assert "/workspaces/workbench/api/status" in compose
 
 
@@ -122,16 +153,26 @@ def test_stale_detects_changed_copy_input_and_new_image(tmp_path):
     assert module.stale(config, state, lookup) == ["jupyter"]
 
 
-def test_build_inputs_cover_every_compose_build():
-    if not shutil.which("docker"):
-        pytest.skip("Docker Compose is required for config validation")
+def test_named_context_change_marks_image_stale(tmp_path):
+    """Regression: an SDK edit must rebuild images that install it through a
+    named build context (COPY --from=sdk), not only the image's own sources."""
     module = _load_build_inputs()
-    result = subprocess.run(
-        ["docker", "compose", "-f", str(ROOT / "deploy/compose.yaml"), "--profile", "ide",
-         "config", "--format", "json"],
-        cwd=ROOT, capture_output=True, text=True, check=True,
-    )
-    config = json.loads(result.stdout)
+    app, sdk = tmp_path / "app", tmp_path / "sdk"
+    app.mkdir(); sdk.mkdir()
+    (app / "Dockerfile").write_text("FROM scratch AS sdk\nFROM python:3.11\nCOPY --from=sdk / /opt/sdk/\n")
+    (sdk / "client.py").write_text("v = 1\n")
+    config = {"services": {"agent": {"image": "agent", "build": {
+        "context": str(app), "dockerfile": "Dockerfile", "additional_contexts": {"sdk": str(sdk)}}}}}
+    lookup = lambda image: "sha256:one"  # noqa: E731
+    state = module.record(config, {}, ["agent"], lookup)
+    assert module.stale(config, state, lookup) == []
+    (sdk / "client.py").write_text("v = 2\n")
+    assert module.stale(config, state, lookup) == ["agent"]
+
+
+def test_build_inputs_cover_every_compose_build():
+    module = _load_build_inputs()
+    config = compose_config("ide")
     built = module.built_services(config)
     assert {"gateway", "jupyter", "ide"} <= set(built)
     for name, svc in built.items():

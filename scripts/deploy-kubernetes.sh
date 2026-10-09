@@ -17,12 +17,12 @@ done
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 command -v helm >/dev/null
 command -v kubectl >/dev/null
-helm lint "$root/deploy/helm/kionga" "${values_args[@]}" --namespace "$namespace" --strict
+helm lint "$root/helm/kionga" "${values_args[@]}" --namespace "$namespace" --strict
 kubectl --context "$context" get namespace "$namespace" >/dev/null
 for crd in kiongaagents kiongaworkspaces kiongapipelineruns kiongamodelpromotions kiongatools kiongaconnections; do
   kubectl --context "$context" get crd "$crd.mlaiops.io" >/dev/null
 done
-rendered="$(helm template kionga "$root/deploy/helm/kionga" --namespace "$namespace" "${values_args[@]}")"
+rendered="$(helm template kionga "$root/helm/kionga" --namespace "$namespace" "${values_args[@]}")"
 if [[ "$rendered" == *'kind: ExternalSecret'* ]]; then
   kubectl --context "$context" get crd externalsecrets.external-secrets.io >/dev/null
 fi
@@ -34,7 +34,7 @@ if [[ "$mode" != --apply ]]; then
   echo 'Inputs rendered and cluster prerequisites checked. Add --apply to install/upgrade.'
   exit 0
 fi
-helm upgrade --install kionga "$root/deploy/helm/kionga" \
+helm upgrade --install kionga "$root/helm/kionga" \
   --kube-context "$context" --namespace "$namespace" "${values_args[@]}" \
   --atomic --wait --timeout 15m --history-max 10
 kubectl --context "$context" -n "$namespace" rollout status deployment/kionga-gateway --timeout=5m

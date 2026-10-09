@@ -1,0 +1,72 @@
+name: Pressure
+
+# Builds every image from the component repositories, boots the core stack and
+# pushes it: end-to-end smoke, concurrency stress, and k6 load with SLO
+# thresholds. Nightly, on demand, and on pushes to main (too heavy for PRs).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: pressure-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  KIONGA_SRC: ${{ github.workspace }}/src
+  KIONGA_GIT_BASE: https://github.com/kiongahq/
+
+jobs:
+  build:
+    name: Build all images (amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/workspace.sh
+      - run: docker compose -f compose.yaml --profile ide build
+
+  stack:
+    name: Full-stack pressure (smoke + load + concurrency)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/workspace.sh
+      - name: Boot the core platform
+        # The workbench and IDE are dev surfaces this lane does not exercise;
+        # the build job proves they compile.
+        run: |
+          core=$(docker compose -f compose.yaml config --services | grep -vxE 'jupyter|ide')
+          docker compose -f compose.yaml up -d --build $core
+          bash scripts/local-topics.sh
+      - name: Wait for the stack
+        run: |
+          ready() { curl -fsS "$1" >/dev/null 2>&1; }
+          for i in $(seq 1 90); do
+            if ready http://localhost:8080/api/v1/health \
+               && ready http://localhost:15000/health \
+               && ready http://localhost:4200/api/health; then
+              echo "stack ready after ${i} checks"; exit 0
+            fi
+            sleep 5
+          done
+          echo "stack did not become ready in time"; exit 1
+      - name: End-to-end smoke
+        run: ./scripts/demo-smoke.sh
+      - name: Concurrency stress
+        run: REQUESTS=300 CONCURRENCY=48 ./scripts/stress-test.sh
+      - uses: grafana/setup-k6-action@v1
+      - name: Load test with SLO thresholds
+        run: k6 run -e PROFILE=smoke -e MLAIOPS_URL=http://localhost:8080 tests/load/gateway.js
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose -f compose.yaml logs --tail 200
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.yaml down -v

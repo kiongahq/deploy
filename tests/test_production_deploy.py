@@ -8,8 +8,8 @@ import subprocess
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location("vm_deploy", ROOT / "deploy/vm/up.py")
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location("vm_deploy", ROOT / "vm/up.py")
 vm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vm)
 cloud_spec = importlib.util.spec_from_file_location("cloud_preflight", ROOT / "scripts/cloud-preflight.py")
@@ -49,7 +49,7 @@ def test_vm_compose_resolves_without_repository_dotenv(tmp_path):
         pytest.skip("Docker Compose is required for VM configuration validation")
     path, _ = vm_inputs(tmp_path)
     result = subprocess.run(
-        ["docker", "compose", "--env-file", "/dev/null", "-f", str(ROOT / "deploy/vm/compose.yaml"), "config", "--quiet"],
+        ["docker", "compose", "--env-file", "/dev/null", "-f", str(ROOT / "vm/compose.yaml"), "config", "--quiet"],
         env=vm.deployment_environment(path), capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
@@ -73,7 +73,8 @@ def test_vm_rejects_unsafe_inputs(tmp_path, problem):
 
 def helm_binary():
     helm = os.getenv("HELM") or shutil.which("helm")
-    local = ROOT / ".tools/helm/darwin-arm64/helm"
+    # Where scripts/bootstrap-k8s-tools.sh installs it.
+    local = Path(os.getenv("MLOPS_TOOLS_BIN") or ROOT / ".tools.nosync/bin") / "helm"
     if not helm and local.exists():
         helm = str(local)
     if not helm:
@@ -81,12 +82,13 @@ def helm_binary():
     return helm
 
 
-def render_chart(tmp_path):
-    values = yaml.safe_load((ROOT / "deploy/helm/production.example.yaml").read_text())
+def render_chart(tmp_path, **overrides):
+    values = yaml.safe_load((ROOT / "helm/production.example.yaml").read_text())
     values["images"] = {name: f"registry/{name}@sha256:" + "a" * 64 for name in values["images"]}
+    values.update(overrides)
     file = tmp_path / "values.yaml"
     file.write_text(yaml.safe_dump(values))
-    result = subprocess.run([helm_binary(), "template", "kionga", str(ROOT / "deploy/helm/kionga"),
+    result = subprocess.run([helm_binary(), "template", "kionga", str(ROOT / "helm/kionga"),
                              "--namespace", "kionga-system", "-f", str(file)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
@@ -118,7 +120,7 @@ def test_managed_chart_security_and_availability(tmp_path):
 
 
 def test_chart_refuses_unpinned_default_images():
-    result = subprocess.run([helm_binary(), "template", "kionga", str(ROOT / "deploy/helm/kionga"), "--set", "ingress.enabled=false"],
+    result = subprocess.run([helm_binary(), "template", "kionga", str(ROOT / "helm/kionga"), "--set", "ingress.enabled=false"],
                             capture_output=True, text=True)
     assert result.returncode != 0
     assert "immutable" in result.stderr
@@ -129,8 +131,8 @@ def test_chart_refuses_unpinned_default_images():
     ("aks", "disk.csi.azure.com"),
 ])
 def test_provider_overlay_and_storage_class(provider, provisioner, tmp_path):
-    overlay = yaml.safe_load((ROOT / f"deploy/helm/providers/{provider}.example.yaml").read_text())
-    storage = yaml.safe_load((ROOT / f"deploy/helm/providers/{provider}-storageclass.example.yaml").read_text())
+    overlay = yaml.safe_load((ROOT / f"helm/providers/{provider}.example.yaml").read_text())
+    storage = yaml.safe_load((ROOT / f"helm/providers/{provider}-storageclass.example.yaml").read_text())
     assert overlay["storageClass"] == storage["metadata"]["name"]
     assert storage["provisioner"] == provisioner
     assert storage["allowVolumeExpansion"] is True
@@ -199,3 +201,34 @@ def test_cloud_context_rejects_different_cluster(monkeypatch):
     monkeypatch.setattr(cloud.subprocess, "run", lambda *_, **__: Result())
     with pytest.raises(ValueError, match="different cluster"):
         cloud.check_context_endpoint("staging", "https://expected.example")
+
+
+def test_kubernetes_pipeline_executor_is_opt_in_and_namespaced(tmp_path):
+    """The gateway may create and delete Jobs and read Pods/Events in one
+    dedicated namespace, nothing cluster-wide, and only when enabled."""
+    def executor_parts(docs):
+        roles = [d for d in docs if d["kind"] in {"Role", "ClusterRole"}
+                 and d["metadata"]["name"].endswith("pipeline-executor")]
+        gateway = next(d for d in docs if d["kind"] == "Deployment"
+                       and d["metadata"]["name"] == "kionga-gateway")
+        env = {e["name"]: e.get("value") for c in gateway["spec"]["template"]["spec"]["containers"]
+               for e in c.get("env", [])}
+        return roles, env
+
+    roles, env = executor_parts(render_chart(tmp_path))
+    assert roles == [] and "KIONGA_EXECUTOR" not in env
+
+    docs = render_chart(tmp_path, pipelineExecutor={"kubernetes": True, "namespace": "kionga-runs"})
+    roles, env = executor_parts(docs)
+    assert env["KIONGA_EXECUTOR"] == "kubernetes"
+    assert env["KIONGA_K8S_NAMESPACE"] == "kionga-runs"
+    assert [r["kind"] for r in roles] == ["Role"]
+    assert roles[0]["metadata"]["namespace"] == "kionga-runs"
+    granted = {(res, verb) for rule in roles[0]["rules"] for res in rule["resources"]
+               for verb in rule["verbs"]}
+    assert ("jobs", "create") in granted and ("jobs", "delete") in granted
+    assert {verb for res, verb in granted if res in {"pods", "events"}} == {"get", "list", "watch"}
+    assert not any(res in {"secrets", "pods/exec"} for res, _ in granted)
+    binding = next(d for d in docs if d["kind"] == "RoleBinding"
+                   and d["metadata"]["name"].endswith("pipeline-executor"))
+    assert binding["subjects"][0]["name"] == "kionga-gateway"

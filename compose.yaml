@@ -1,3 +1,12 @@
+# Kionga local stack, built from sibling checkouts of the component repositories.
+# KIONGA_SRC is the directory holding them (default: the parent of this repo):
+#
+#   <KIONGA_SRC>/{deploy,platform,serving,trace-proxy,agent-runtime,
+#                pipeline-runner,sdk-python,workspace}
+#
+# `make workspace` clones any that are missing. KIONGA_SDK_SOURCE=release builds
+# the Python images against the SDK and platform releases instead of the local
+# checkouts. Released, digest-pinned images for a server live in vm/compose.yaml.
 name: mlaiops
 
 services:
@@ -129,7 +138,7 @@ services:
 
   gateway:
     build:
-      context: ../go
+      context: ${KIONGA_SRC:-..}/platform/go
       dockerfile: Dockerfile
       args: {SERVICE: gateway}
     depends_on:
@@ -173,7 +182,8 @@ services:
 
   feature-gateway:
     build:
-      context: ..
+      context: ${KIONGA_SRC:-..}/platform/go
+      dockerfile: Dockerfile
       args: {SERVICE: feature-gateway}
     depends_on:
       redis: {condition: service_healthy}
@@ -187,7 +197,7 @@ services:
   log-exporter:
     profiles: [log-export]
     build:
-      context: ../go
+      context: ${KIONGA_SRC:-..}/platform/go
       dockerfile: Dockerfile
       args: {SERVICE: log-exporter}
     depends_on:
@@ -221,7 +231,8 @@ services:
 
   storage-proxy:
     build:
-      context: ..
+      context: ${KIONGA_SRC:-..}/platform/go
+      dockerfile: Dockerfile
       args: {SERVICE: storage-proxy}
     depends_on:
       minio: {condition: service_started}
@@ -269,8 +280,7 @@ services:
 
   pipeline-runner:
     build:
-      context: ..
-      dockerfile: python/pipelines/Dockerfile
+      context: ${KIONGA_SRC:-..}/pipeline-runner
     depends_on:
       prefect-server: {condition: service_healthy}
       mlflow: {condition: service_healthy}
@@ -298,8 +308,7 @@ services:
 
   serving-manager:
     build:
-      context: ..
-      args: {SERVICE: serving-manager}
+      context: ${KIONGA_SRC:-..}/serving
     # Root inside this designated engine-control service: the Docker socket
     # requires it. The pipeline-runner is the only other socket consumer.
     user: "0:0"
@@ -317,8 +326,11 @@ services:
 
   realtime-processor:
     build:
-      context: ..
-      dockerfile: python/agent_runtime/Dockerfile
+      context: ${KIONGA_SRC:-..}/agent-runtime
+      args:
+        SDK_SOURCE: ${KIONGA_SDK_SOURCE:-local}
+      additional_contexts:
+        sdk: ${KIONGA_SRC:-..}/sdk-python
     depends_on:
       kafka-rest: {condition: service_started}
       feature-gateway: {condition: service_started}
@@ -333,7 +345,7 @@ services:
     restart: unless-stopped
 
   feature-materializer:
-    # The agent runtime already contains python/features and the same SDK extras.
+    # The agent runtime image already contains the features package and SDK extras.
     image: mlaiops-agent-runtime
     depends_on:
       gateway: {condition: service_started}
@@ -349,8 +361,7 @@ services:
 
   trace-proxy:
     build:
-      context: ..
-      args: {SERVICE: trace-proxy}
+      context: ${KIONGA_SRC:-..}/trace-proxy
     depends_on:
       kafka-rest: {condition: service_started}
     environment:
@@ -366,10 +377,12 @@ services:
   agent-runtime:
     image: mlaiops-agent-runtime
     build:
-      context: ..
-      dockerfile: python/agent_runtime/Dockerfile
+      context: ${KIONGA_SRC:-..}/agent-runtime
       args:
         SDK_EXTRAS: ${AGENT_RUNTIME_EXTRAS:-runtime}
+        SDK_SOURCE: ${KIONGA_SDK_SOURCE:-local}
+      additional_contexts:
+        sdk: ${KIONGA_SRC:-..}/sdk-python
     depends_on:
       postgres: {condition: service_healthy}
       trace-proxy: {condition: service_started}
@@ -399,8 +412,14 @@ services:
 
   jupyter:
     build:
-      context: ..
-      dockerfile: deploy/jupyter/Dockerfile
+      context: ${KIONGA_SRC:-..}/workspace
+      dockerfile: jupyter/Dockerfile
+      args:
+        PLATFORM_SOURCE: ${KIONGA_SDK_SOURCE:-local}
+      additional_contexts:
+        sdk: ${KIONGA_SRC:-..}/sdk-python
+        agent-runtime: ${KIONGA_SRC:-..}/agent-runtime
+        pipeline-runner: ${KIONGA_SRC:-..}/pipeline-runner
     depends_on:
       mlflow: {condition: service_healthy}
       gateway: {condition: service_started}
@@ -447,7 +466,7 @@ services:
   ide:
     profiles: [ide]
     build:
-      context: .
+      context: ${KIONGA_SRC:-..}/workspace
       dockerfile: ide/Dockerfile
       args:
         INSTALL_CODING_AGENTS: ${KIONGA_IDE_AGENTS:-false}

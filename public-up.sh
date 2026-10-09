@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # One-command public deployment: the local stack plus TLS + OIDC edge.
-# Run on the VM from the repository root:  ./deploy/public-up.sh
+# Run on the VM from the repository root:  ./public-up.sh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 # Production uses non-secret deployment JSON and externally delivered secret files.
 # The old demo overlay is retained only behind an explicit acknowledgement.
 if [[ "${KIONGA_LEGACY_PUBLIC_DEPLOY:-0}" != 1 ]]; then
-  [[ $# -eq 1 ]] || { echo "Usage: bash deploy/public-up.sh /etc/kionga/deployment.json (see docs/hosting.md)" >&2; exit 1; }
-  exec python3 deploy/vm/up.py "$1"
+  [[ $# -eq 1 ]] || { echo "Usage: bash public-up.sh /etc/kionga/deployment.json (see https://kiongahq.github.io/docs/operations/public-vm/)" >&2; exit 1; }
+  exec python3 vm/up.py "$1"
 fi
 echo "WARNING: legacy development-derived public overlay; not the supported production path" >&2
 
@@ -26,7 +26,7 @@ for required in MLAIOPS_DOMAIN MLAIOPS_ACME_EMAIL DEX_CLIENT_SECRET DEX_ADMIN_EM
   fi
 done
 
-compose=(docker compose -f deploy/compose.yaml -f deploy/compose.public.yaml)
+compose=(docker compose -f compose.yaml -f compose.public.yaml)
 
 echo "==> validating configuration"
 "${compose[@]}" config --quiet

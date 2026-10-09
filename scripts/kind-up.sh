@@ -16,7 +16,7 @@ done
 docker info >/dev/null || { echo "Docker is not running" >&2; exit 1; }
 grep -Fxq "$CLUSTER" <<<"$(kind get clusters)" || kind create cluster \
   --name "$CLUSTER" \
-  --config "$ROOT/deploy/kind/cluster.yaml" \
+  --config "$ROOT/kind/cluster.yaml" \
   --image "$KIND_NODE_IMAGE"
 kubectl config use-context "$CONTEXT" >/dev/null
 KUBECTL=(kubectl --context "$CONTEXT")
@@ -36,11 +36,19 @@ helm upgrade --install strimzi strimzi/strimzi-kafka-operator --namespace kafka 
 # local kubelets, so CPU-target agent HPAs work in the fidelity stack.
 helm upgrade --install metrics-server metrics-server/metrics-server --namespace kube-system --set 'args[0]=--kubelet-insecure-tls' --wait
 
-for service in gateway operator integration-worker feature-gateway storage-proxy metrics-collector trace-proxy; do
-  docker build --build-arg "SERVICE=$service" -t "mlaiops/$service:dev" "$ROOT"
+# Component sources are sibling checkouts (make workspace).
+SRC="${KIONGA_SRC:-$(cd "$ROOT/.." && pwd)}"
+for repo in platform trace-proxy agent-runtime sdk-python; do
+  [[ -d "$SRC/$repo" ]] || { echo "Missing $SRC/$repo. Run 'make workspace' first." >&2; exit 1; }
+done
+for service in gateway operator integration-worker feature-gateway storage-proxy metrics-collector; do
+  docker build --build-arg "SERVICE=$service" -t "mlaiops/$service:dev" "$SRC/platform/go"
   kind load docker-image --name "$CLUSTER" "mlaiops/$service:dev"
 done
-docker build -f "$ROOT/python/agent_runtime/Dockerfile" -t mlaiops/agent-runtime:dev "$ROOT"
+docker build -t mlaiops/trace-proxy:dev "$SRC/trace-proxy"
+kind load docker-image --name "$CLUSTER" mlaiops/trace-proxy:dev
+docker build --build-arg SDK_SOURCE=local --build-context "sdk=$SRC/sdk-python" \
+  -t mlaiops/agent-runtime:dev "$SRC/agent-runtime"
 kind load docker-image --name "$CLUSTER" mlaiops/agent-runtime:dev
 
 "${KUBECTL[@]}" apply -f "$ROOT/config/network"

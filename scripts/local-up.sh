@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="$ROOT/deploy/compose.yaml"
+COMPOSE_FILE="$ROOT/compose.yaml"
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
 GATEWAY_PORT_EXPLICIT="${GATEWAY_PORT+x}"
@@ -18,9 +18,9 @@ cd "$ROOT"
 # likely to terminate a registry/CDN transfer with EOF.
 export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-2}"
 
-# Buildx provenance discovery shells out to Git. This repository is commonly
-# kept under macOS Documents/iCloud, where an evicted or busy .git object can
-# make that optional metadata probe hang after every image has already built.
+# Buildx provenance discovery shells out to Git. A checkout under macOS
+# Documents/iCloud can have evicted or busy .git objects that make that optional
+# metadata probe hang after every image has already built.
 # Local images do not need SCM attestations; CI/release builds can override both.
 export BUILDX_GIT_INFO="${BUILDX_GIT_INFO:-false}"
 export BUILDX_GIT_LABELS="${BUILDX_GIT_LABELS:-false}"
@@ -175,6 +175,7 @@ start_platform() {
 }
 
 stale_services() {
+  check_build_context
   compose config --format json | python3 "$ROOT/scripts/build_inputs.py" stale --state "$BUILD_STATE"
 }
 
@@ -182,16 +183,22 @@ record_build_inputs() {
   compose config --format json | python3 "$ROOT/scripts/build_inputs.py" record --state "$BUILD_STATE" "$@"
 }
 
+# Every image builds from a sibling checkout under KIONGA_SRC (see compose.yaml).
+export KIONGA_SRC="${KIONGA_SRC:-$(cd "$ROOT/.." && pwd)}"
+REQUIRED_REPOS=(platform serving trace-proxy agent-runtime pipeline-runner sdk-python workspace)
+
 check_build_context() {
-  # iCloud can evict tracked files under ~/Documents. Buildx then appears to
-  # hang at "load .dockerignore" rather than reporting a useful error.
-  [[ "$(uname -s)" == Darwin ]] || return 0
-  local file
-  for file in "$ROOT/.dockerignore" "$ROOT/Dockerfile"; do
-    if [[ -n "$(find "$file" -flags +dataless -print 2>/dev/null)" ]]; then
-      fail "$file is an iCloud dataless file. Download it in Finder (or move the repo to a non-iCloud folder) before building."
-    fi
+  local repo missing=()
+  for repo in "${REQUIRED_REPOS[@]}"; do
+    [[ -d "$KIONGA_SRC/$repo/.git" || -f "$KIONGA_SRC/$repo/.git" ]] || missing+=("$repo")
   done
+  [[ ${#missing[@]} -eq 0 ]] || fail "missing component checkouts under $KIONGA_SRC: ${missing[*]}. Run 'make workspace'."
+  # iCloud can evict files under ~/Documents. Buildx then appears to hang at
+  # "load .dockerignore" rather than reporting a useful error.
+  [[ "$(uname -s)" == Darwin ]] || return 0
+  local evicted
+  evicted="$(find "${REQUIRED_REPOS[@]/#/$KIONGA_SRC/}" -flags +dataless -not -path '*/.git/*' -print -quit 2>/dev/null || true)"
+  [[ -z "$evicted" ]] || fail "$evicted is an iCloud dataless file. Move the checkouts out of iCloud before building."
 }
 
 diagnostics() {

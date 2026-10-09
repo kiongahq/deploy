@@ -1,8 +1,8 @@
-# Standalone production pilot: never merge deploy/compose.yaml into this stack.
+# Standalone production pilot: never merge compose.yaml into this stack.
 name: kionga-public
 services:
   gateway:
-    image: ${KIONGA_GATEWAY_IMAGE:?supply digest through deploy/vm/up.py}
+    image: ${KIONGA_GATEWAY_IMAGE:?supply digest through vm/up.py}
     restart: unless-stopped
     user: "65532:65532"
     read_only: true
@@ -30,7 +30,7 @@ services:
     networks: [backend]
     # No host port. Caddy is the only public listener.
   caddy:
-    image: ${KIONGA_CADDY_IMAGE:?supply digest through deploy/vm/up.py}
+    image: ${KIONGA_CADDY_IMAGE:?supply digest through vm/up.py}
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:

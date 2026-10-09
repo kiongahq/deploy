@@ -1,6 +1,6 @@
 # Public hosting overlay: the local stack plus an authenticated TLS edge.
 # Usage:
-#   docker compose -f deploy/compose.yaml -f deploy/compose.public.yaml up -d
+#   docker compose -f compose.yaml -f compose.public.yaml up -d
 # Requirements: a DNS record pointing at this VM and a filled-in .env
 # (see .env.example). No service is swapped — local == deployed.
 

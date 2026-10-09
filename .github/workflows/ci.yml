@@ -1,0 +1,33 @@
+name: CI
+
+# Gate tests for how the components run together. The component repositories
+# are cloned beside this one (main branches), so cross-repo checks run against
+# real code instead of skipping.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      KIONGA_SRC: ${{ github.workspace }}/src
+      KIONGA_GIT_BASE: https://github.com/kiongahq/
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone the components
+        run: bash scripts/workspace.sh
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - uses: azure/setup-helm@v4
+        with: {version: v3.21.0}
+      - run: python -m pip install pytest pyyaml boto3
+      - run: python -m pytest -q tests
+      - run: helm lint helm/kionga --strict
+      - run: bash -n public-up.sh scripts/*.sh
+      - run: python -m py_compile vm/up.py scripts/verify-production.py scripts/cloud-preflight.py scripts/build_inputs.py minio-init.py

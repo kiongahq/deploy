@@ -77,6 +77,15 @@ def service_hash(build: dict) -> str:
         for file in iter_files((context / source).resolve()):
             digest.update(str(file.relative_to(context.resolve())).encode())
             digest.update(file.read_bytes())
+    # Named contexts (COPY --from=<name>) are other repositories, e.g. the SDK
+    # checkout an agent-runtime image installs. Hash each one whole so a change
+    # there marks the image stale too.
+    for name, path in sorted((build.get("additional_contexts") or {}).items()):
+        root = Path(path).resolve()
+        digest.update(f"context:{name}".encode())
+        for file in iter_files(root):
+            digest.update(str(file.relative_to(root)).encode())
+            digest.update(file.read_bytes())
     return digest.hexdigest()
 
 

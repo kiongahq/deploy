@@ -1,0 +1,6 @@
+.tools.nosync/
+.local-state/
+.env
+__pycache__/
+.pytest_cache/
+.venv/
