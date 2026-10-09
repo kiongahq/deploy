@@ -1,13 +1,13 @@
 # Replace every digest, host, endpoint and CIDR. This is not a live release.
 images:
-  gateway: ghcr.io/ml-ai-ops/gateway@sha256:REPLACE
-  operator: ghcr.io/ml-ai-ops/operator@sha256:REPLACE
-  integration-worker: ghcr.io/ml-ai-ops/integration-worker@sha256:REPLACE
-  feature-gateway: ghcr.io/ml-ai-ops/feature-gateway@sha256:REPLACE
-  storage-proxy: ghcr.io/ml-ai-ops/storage-proxy@sha256:REPLACE
-  trace-proxy: ghcr.io/ml-ai-ops/trace-proxy@sha256:REPLACE
-  jupyter: ghcr.io/ml-ai-ops/jupyter@sha256:REPLACE
-  ide: ghcr.io/ml-ai-ops/ide@sha256:REPLACE
+  gateway: ghcr.io/kiongahq/gateway@sha256:REPLACE
+  operator: ghcr.io/kiongahq/operator@sha256:REPLACE
+  integration-worker: ghcr.io/kiongahq/integration-worker@sha256:REPLACE
+  feature-gateway: ghcr.io/kiongahq/feature-gateway@sha256:REPLACE
+  storage-proxy: ghcr.io/kiongahq/storage-proxy@sha256:REPLACE
+  trace-proxy: ghcr.io/kiongahq/trace-proxy@sha256:REPLACE
+  jupyter: ghcr.io/kiongahq/jupyter@sha256:REPLACE
+  ide: ghcr.io/kiongahq/ide@sha256:REPLACE
 storageClass: encrypted-expandable
 ingress:
   className: your-ingress-class
