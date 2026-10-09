@@ -135,6 +135,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       kafka-rest: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
     environment:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
@@ -159,6 +160,12 @@ services:
       MLAIOPS_LOCAL_ROLE: ${MLAIOPS_LOCAL_ROLE:-admin}
       MLAIOPS_LOCAL_USERNAME: ${MLAIOPS_LOCAL_USERNAME:-admin}
       MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}
+      # Engineering blog media (images) live in object storage.
+      KIONGA_BLOG_MEDIA_BACKEND: s3
+      KIONGA_BLOG_MEDIA_S3_ENDPOINT: http://minio:9000
+      KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-mlaiops}
+      KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-mlaiops-local-secret}
+      KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
     ports: ["${GATEWAY_PORT:-8080}:8080"]
 
   feature-gateway:
