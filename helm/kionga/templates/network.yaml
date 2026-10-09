@@ -14,7 +14,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: {{ .Values.workspaceNamespace }}}
-      ports: [{port: 8080}, {port: 8081}, {port: 8083}, {port: 8084}]
+      ports: [{port: 8080}, {port: 8081}, {port: 8083}, {port: 8084}, {port: 8087}]
   egress:
     - to:
         - namespaceSelector:
@@ -64,5 +64,5 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: {{ .Release.Namespace }}}
-      ports: [{port: 8080}, {port: 8081}, {port: 8083}, {port: 8084}]
+      ports: [{port: 8080}, {port: 8081}, {port: 8083}, {port: 8084}, {port: 8087}]
 {{- end }}

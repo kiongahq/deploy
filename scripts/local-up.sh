@@ -18,9 +18,6 @@ cd "$ROOT"
 # likely to terminate a registry/CDN transfer with EOF.
 export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-2}"
 
-# Buildx provenance discovery shells out to Git. A checkout under macOS
-# Documents/iCloud can have evicted or busy .git objects that make that optional
-# metadata probe hang after every image has already built.
 # Local images do not need SCM attestations; CI/release builds can override both.
 export BUILDX_GIT_INFO="${BUILDX_GIT_INFO:-false}"
 export BUILDX_GIT_LABELS="${BUILDX_GIT_LABELS:-false}"
@@ -192,12 +189,6 @@ check_build_context() {
     [[ -d "$KIONGA_SRC/$repo/.git" || -f "$KIONGA_SRC/$repo/.git" ]] || missing+=("$repo")
   done
   [[ ${#missing[@]} -eq 0 ]] || fail "missing component checkouts under $KIONGA_SRC: ${missing[*]}. Run 'make workspace'."
-  # iCloud can evict files under ~/Documents. Buildx then appears to hang at
-  # "load .dockerignore" rather than reporting a useful error.
-  [[ "$(uname -s)" == Darwin ]] || return 0
-  local evicted
-  evicted="$(find "${REQUIRED_REPOS[@]/#/$KIONGA_SRC/}" -flags +dataless -not -path '*/.git/*' -print -quit 2>/dev/null || true)"
-  [[ -z "$evicted" ]] || fail "$evicted is an iCloud dataless file. Move the checkouts out of iCloud before building."
 }
 
 diagnostics() {

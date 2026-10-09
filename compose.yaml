@@ -167,6 +167,7 @@ services:
       KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
       # Shared with jupyter and ide: authorizes structured scaffold jobs.
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
+      KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
       STORAGE_PROXY_URL: http://storage-proxy:8084
       PREFECT_API_URL: http://prefect-server:4200/api
@@ -436,7 +437,10 @@ services:
     environment:
       JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
-      MLAIOPS_URL: http://gateway:8080
+      KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
+      KIONGA_WORKSPACE_NAME: local
+      KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
+      MLAIOPS_URL: http://127.0.0.1:8890
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
@@ -488,7 +492,10 @@ services:
       KIONGA_CUSTOM_AGENT_COMMAND: ${KIONGA_CUSTOM_AGENT_COMMAND:-}
       KIONGA_WORKSPACE: /workspace
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
-      MLAIOPS_URL: http://gateway:8080
+      KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
+      KIONGA_WORKSPACE_NAME: local
+      KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
+      MLAIOPS_URL: http://127.0.0.1:8890
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
