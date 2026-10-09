@@ -138,6 +138,7 @@ services:
     environment:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
+      KIONGA_LOG_EXPORTER_URL: ${KIONGA_LOG_EXPORTER_URL:-http://log-exporter:8086}
       MLAIOPS_TENANT: local
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       KIONGA_JUPYTER_UPSTREAM: http://jupyter:8888
@@ -170,6 +171,44 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
     ports: ["${FEATURE_GATEWAY_PORT:-8083}:8083"]
+
+  # Optional: export logs to Elasticsearch/OpenSearch. Enable with
+  #   docker compose --profile log-export up -d log-exporter
+  # and set KIONGA_LOG_EXPORT_* in .env (secrets as files under config/secrets).
+  log-exporter:
+    profiles: [log-export]
+    build:
+      context: ../go
+      dockerfile: Dockerfile
+      args: {SERVICE: log-exporter}
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      MLAIOPS_TENANT: ${MLAIOPS_TENANT:-default}
+      KIONGA_LOG_EXPORT_TARGET: ${KIONGA_LOG_EXPORT_TARGET:-}
+      KIONGA_LOG_EXPORT_URL: ${KIONGA_LOG_EXPORT_URL:-}
+      KIONGA_LOG_EXPORT_USERNAME: ${KIONGA_LOG_EXPORT_USERNAME:-}
+      KIONGA_LOG_EXPORT_API_KEY_FILE: ${KIONGA_LOG_EXPORT_API_KEY_FILE:-}
+      KIONGA_LOG_EXPORT_PASSWORD_FILE: ${KIONGA_LOG_EXPORT_PASSWORD_FILE:-}
+      KIONGA_LOG_EXPORT_CA_FILE: ${KIONGA_LOG_EXPORT_CA_FILE:-}
+      KIONGA_LOG_EXPORT_ANONYMOUS: ${KIONGA_LOG_EXPORT_ANONYMOUS:-false}
+    volumes:
+      - ../config/secrets:/run/kionga-secrets:ro
+    ports: ["127.0.0.1:${LOG_EXPORTER_PORT:-8086}:8086"]
+
+  # Local, unauthenticated test targets for the exporter (large images).
+  elasticsearch:
+    profiles: [log-export-es]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment: {discovery.type: single-node, xpack.security.enabled: "false", ES_JAVA_OPTS: "-Xms512m -Xmx512m"}
+    ports: ["127.0.0.1:9200:9200"]
+
+  opensearch:
+    profiles: [log-export-os]
+    image: opensearchproject/opensearch:2.17.1
+    environment: {discovery.type: single-node, DISABLE_SECURITY_PLUGIN: "true", OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"}
+    ports: ["127.0.0.1:9201:9200"]
 
   storage-proxy:
     build:
