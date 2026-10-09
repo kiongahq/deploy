@@ -73,6 +73,10 @@ spec:
             - {name: KIONGA_WORKSPACE_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
             - {name: WORKSPACE_STORAGE_CLASS, value: {{ $.Values.storageClass | quote }}}
             - {name: MLAIOPS_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8080"}
+            {{- if and (eq $name "gateway") $.Values.pipelineExecutor.kubernetes }}
+            - {name: KIONGA_EXECUTOR, value: kubernetes}
+            - {name: KIONGA_K8S_NAMESPACE, value: {{ $.Values.pipelineExecutor.namespace | quote }}}
+            {{- end }}
             - {name: TRACE_PROXY_IMAGE, value: {{ index $.Values.images "trace-proxy" | quote }}}
             - {name: WORKBENCH_IMAGE, value: {{ $.Values.images.jupyter | quote }}}
             - {name: IDE_IMAGE, value: {{ $.Values.images.ide | quote }}}

@@ -116,3 +116,11 @@ externalSecrets:
   storeKind: SecretStore
   # name -> list of {secretKey: DATABASE_URL, remoteRef: {key: path, property: field}}
   targets: {}
+
+# Run container pipeline nodes as Kubernetes Jobs from the gateway instead of
+# the Compose pipeline runner. Requires the namespace to exist (with your
+# NetworkPolicy and resource quota). Implemented and tested against the
+# Kubernetes API fake; not yet validated on a live cluster.
+pipelineExecutor:
+  kubernetes: false
+  namespace: kionga-pipelines

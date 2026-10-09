@@ -99,3 +99,29 @@ metadata:
 subjects:
   - {kind: ServiceAccount, name: {{ .Release.Name }}-operator, namespace: {{ .Release.Namespace }}}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-leader}
+{{- if .Values.pipelineExecutor.kubernetes }}
+---
+# Lets the gateway run pipeline nodes as Jobs in one dedicated namespace and
+# read the Pods and Events it reports. Nothing cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-pipeline-executor
+  namespace: {{ .Values.pipelineExecutor.namespace }}
+rules:
+  - apiGroups: [batch]
+    resources: [jobs, jobs/status]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-pipeline-executor
+  namespace: {{ .Values.pipelineExecutor.namespace }}
+subjects:
+  - {kind: ServiceAccount, name: {{ .Release.Name }}-gateway, namespace: {{ .Release.Namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-pipeline-executor}
+{{- end }}
