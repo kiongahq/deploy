@@ -144,6 +144,8 @@ services:
       KIONGA_CREDENTIAL_KEY: ${KIONGA_CREDENTIAL_KEY:-}
       KIONGA_IDE_UPSTREAM: http://ide:8080
       KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
+      # Shared with jupyter and ide: authorizes structured scaffold jobs.
+      KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
       STORAGE_PROXY_URL: http://storage-proxy:8084
       PREFECT_API_URL: http://prefect-server:4200/api
@@ -358,6 +360,7 @@ services:
       gateway: {condition: service_started}
     environment:
       JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
+      KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
       MLAIOPS_URL: http://gateway:8080
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       MLFLOW_TRACKING_URI: http://mlflow:5000
@@ -409,6 +412,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       KIONGA_CUSTOM_AGENT_COMMAND: ${KIONGA_CUSTOM_AGENT_COMMAND:-}
       KIONGA_WORKSPACE: /workspace
+      KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
       MLAIOPS_URL: http://gateway:8080
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
