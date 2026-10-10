@@ -15,7 +15,20 @@
 set -uo pipefail
 
 export GATEWAY="${GATEWAY:-http://localhost:8080}"
-export TOKEN="${MLAIOPS_TOKEN:-}"
+# Credentials: an API key (MLAIOPS_TOKEN), or a local sign-in, as demo-smoke.sh.
+if [ -n "${MLAIOPS_TOKEN:-}" ]; then
+  export AUTH_HEADER="Authorization: Bearer ${MLAIOPS_TOKEN}"
+else
+  login_cookie="$(curl -sS -D - -o /dev/null \
+    --data-urlencode "username=${MLAIOPS_LOCAL_USERNAME:-admin}" \
+    --data-urlencode "password=${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}" \
+    "$GATEWAY/auth/local/login" | tr -d '\r' | awk 'tolower($1)=="set-cookie:" {print $2}' | cut -d';' -f1)"
+  if [ -z "$login_cookie" ]; then
+    printf 'Sign-in failed. Set MLAIOPS_TOKEN to an API key, or supply the local login credentials.\n' >&2
+    exit 1
+  fi
+  export AUTH_HEADER="Cookie: $login_cookie"
+fi
 CONCURRENCY="${CONCURRENCY:-32}"
 REQUESTS="${REQUESTS:-200}"
 export TAG="stress-$(date +%s)"
@@ -30,15 +43,9 @@ count() { grep -cE "$1" "$2" 2>/dev/null | tr -d '[:space:]'; }
 
 # One concurrent write; prints the HTTP status code on stdout.
 write_one() {
-  if [ -n "${TOKEN}" ]; then
-    curl -s -o /dev/null -w '%{http_code}\n' -X POST "$GATEWAY/api/v1/projects" \
-      -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
-      -d "{\"name\":\"${TAG}-$1\",\"template\":\"tabular-classification\"}"
-  else
-    curl -s -o /dev/null -w '%{http_code}\n' -X POST "$GATEWAY/api/v1/projects" \
-      -H 'Content-Type: application/json' \
-      -d "{\"name\":\"${TAG}-$1\",\"template\":\"tabular-classification\"}"
-  fi
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST "$GATEWAY/api/v1/projects" \
+    -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
+    -d "{\"name\":\"${TAG}-$1\",\"template\":\"tabular-classification\"}"
 }
 
 # One concurrent read across a rotation of hot GET endpoints.
@@ -46,11 +53,7 @@ read_one() {
   local paths=(/api/v1/dashboard /api/v1/projects /api/v1/models /api/v1/agents \
     /api/v1/features /api/v1/catalog /api/v1/components /api/v1/me)
   local p="${paths[$(( $1 % ${#paths[@]} ))]}"
-  if [ -n "${TOKEN}" ]; then
-    curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$GATEWAY$p"
-  else
-    curl -s -o /dev/null -w '%{http_code}\n' "$GATEWAY$p"
-  fi
+  curl -s -o /dev/null -w '%{http_code}\n' -H "$AUTH_HEADER" "$GATEWAY$p"
 }
 export -f write_one read_one
 
@@ -67,12 +70,11 @@ werr=$(count '^5[0-9][0-9]$' "$TMP/write_codes"); werr=${werr:-0}
   || bad "$werr server errors under write pressure"
 
 # --- 2. no lost writes ------------------------------------------------------
-auth_arg=""
-[ -n "$TOKEN" ] && auth_arg="-H Authorization: Bearer $TOKEN"
-persisted=$(curl -s ${auth_arg:+-H "Authorization: Bearer $TOKEN"} "$GATEWAY/api/v1/projects" \
+persisted=$(curl -s -H "$AUTH_HEADER" "$GATEWAY/api/v1/projects" \
   | python3 -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for p in d if str(p.get('name','')).startswith('$TAG')))" 2>/dev/null)
 persisted=${persisted:-0}
-[ "$persisted" -eq "$created" ] && ok "all $created writes persisted (no lost writes)" \
+# A run that wrote nothing proves nothing: require writes before checking them.
+[ "$created" -gt 0 ] && [ "$persisted" -eq "$created" ] && ok "all $created writes persisted (no lost writes)" \
   || bad "persisted $persisted of $created created (lost writes / read-after-write gap)"
 
 # --- 3. concurrent reads ----------------------------------------------------
