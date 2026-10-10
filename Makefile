@@ -40,6 +40,13 @@ ide-agents-up:
 ide-down:
 	$(COMPOSE) --profile ide stop ide
 
+sso-up:                    ## single sign-on: Dex + test LDAP directory, gateway in SSO mode
+	$(COMPOSE) -f compose.sso.yaml up -d --wait glauth dex gateway
+
+sso-down:                  ## back to local accounts only
+	$(COMPOSE) -f compose.sso.yaml stop dex glauth
+	$(COMPOSE) up -d gateway
+
 smoke:                     ## end-to-end smoke test against a running stack
 	GATEWAY=$${GATEWAY:-http://localhost:8080} bash scripts/demo-smoke.sh
 

@@ -75,6 +75,36 @@ Docker volumes are not deleted by startup or this source-tree consolidation.
 To use another S3-compatible store, point the `*_S3_ENDPOINT*` settings at it
 and drop the `objectstore` service.
 
+## Single sign-on (SSO, OAuth, LDAP, SAML)
+
+Kionga signs people in through [Dex](https://dexidp.io), which brokers LDAP and
+Active Directory, SAML 2.0, GitHub, GitLab, Google, Microsoft Entra and any OIDC
+provider. Local accounts can stay on as break-glass access.
+
+```bash
+make sso-up         # Dex + a test LDAP directory (GLAuth), gateway in SSO mode
+make sso-down       # back to local accounts only
+```
+
+Open <http://localhost:8080/login.html> and choose **Sign in with Company
+directory**. Test users (password `kionga-sso-dev`): `ada` (group `ml-admins`,
+role admin), `grace` (`data-team`, engineer), `alan` (no mapped group, no role).
+The local `admin` account still works.
+
+To use your own directory, edit the connector in `sso/dex.yaml` (commented
+examples cover GitHub, Google, Entra, SAML and Keycloak) and set in `deploy/.env`:
+
+| Variable | Purpose |
+| --- | --- |
+| `KIONGA_SSO_PROVIDERS` | JSON list of `{id, name, type}`, one per Dex connector shown on the login page |
+| `KIONGA_SSO_GROUP_ROLES` | JSON map of IdP group to Kionga role, e.g. `{"ml-admins":"admin"}` |
+| `DEX_KIONGA_CLIENT_SECRET`, `DEX_LDAP_BIND_PASSWORD` | Secrets for the gateway client and the LDAP bind |
+| `KIONGA_LOCAL_LOGIN` | `true` keeps local accounts next to SSO (requires `MLAIOPS_LOCAL_PASSWORD`) |
+
+The overlay runs Dex with in-memory storage, which suits a laptop. For a shared
+deployment use Dex's SQL or Kubernetes storage and an HTTPS issuer. See
+[Single sign-on](https://kiongahq.github.io/docs/operations/single-sign-on/).
+
 ## Single VM (production pilot)
 
 `vm/compose.yaml` runs released images pinned by digest from
