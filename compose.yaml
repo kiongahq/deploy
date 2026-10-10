@@ -358,6 +358,7 @@ services:
   feature-materializer:
     # The agent runtime image already contains the features package and SDK extras.
     image: mlaiops-agent-runtime
+    pull_policy: never   # built locally by agent-runtime; never pulled from a registry
     depends_on:
       gateway: {condition: service_started}
       feature-gateway: {condition: service_started}

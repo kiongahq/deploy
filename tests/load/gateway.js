@@ -94,14 +94,30 @@ export const options = {
   },
 };
 
-function authHeaders() {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// Sign in once: an API key when given, otherwise the local account. Every
+// virtual user reuses the session, so the test measures the API, not login.
+export function setup() {
+  if (token) return { headers: { Authorization: `Bearer ${token}` } };
+  const login = http.post(`${baseURL}/auth/local/login`, {
+    username: __ENV.MLAIOPS_LOCAL_USERNAME || "admin",
+    password: __ENV.MLAIOPS_LOCAL_PASSWORD || "mlaiops-local",
+    return_to: "/console.html",
+  }, { redirects: 0 });
+  const session = login.cookies.kionga_local_session;
+  if (!session || !session[0] || !session[0].value) {
+    throw new Error(`sign-in failed (status ${login.status}); set MLAIOPS_TOKEN or local credentials`);
+  }
+  return { headers: { Cookie: `kionga_local_session=${session[0].value}` } };
 }
 
-export function readMix() {
+function authHeaders(data) {
+  return (data && data.headers) || {};
+}
+
+export function readMix(data) {
   const endpoint = READ_ENDPOINTS[Math.floor(Math.random() * READ_ENDPOINTS.length)];
   const response = http.get(`${baseURL}${endpoint.path}`, {
-    headers: authHeaders(),
+    headers: authHeaders(data),
     tags: { endpoint: endpoint.name },
   });
   readLatency.add(response.timings.duration, { endpoint: endpoint.name });
@@ -112,7 +128,7 @@ export function readMix() {
   });
 }
 
-export function writeMix() {
+export function writeMix(data) {
   // Pressure the transactional control plane: each create writes a resource,
   // an audit record, and outbox entries in one transaction.
   const payload = JSON.stringify({
@@ -121,7 +137,7 @@ export function writeMix() {
     description: "k6 write pressure",
   });
   const response = http.post(`${baseURL}/api/v1/projects`, payload, {
-    headers: { "Content-Type": "application/json", ...authHeaders() },
+    headers: { "Content-Type": "application/json", ...authHeaders(data) },
     tags: { endpoint: "create_project" },
   });
   writeLatency.add(response.timings.duration);
