@@ -91,6 +91,9 @@ export const options = {
     // Writes go through the transactional outbox; allow more headroom.
     write_latency: ["p(95)<800", "p(99)<1500"],
     write_errors: ["rate<0.02"],
+    // Report-only, per endpoint: the summary then names which read owns a
+    // latency tail instead of only the aggregate.
+    ...Object.fromEntries(READ_ENDPOINTS.map(({ name }) => [`read_latency{endpoint:${name}}`, ["max>=0"]])),
   },
 };
 
