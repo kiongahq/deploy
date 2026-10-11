@@ -1,7 +1,19 @@
-# Dex for the local single sign-on overlay (compose.sso.yaml). Dex expands
-# $VARS from its environment. The browser reaches Dex at localhost:5556 and
-# the gateway at dex:5556; both use the same issuer URL below.
-issuer: http://localhost:5556/dex
+{{- /*
+Dex for every Kionga deployment (compose.yaml). gomplate renders this file in
+the Dex container at start, so connectors switch on from the environment:
+
+  always (local)      LDAP test directory (GLAuth), demo account
+  KIONGA_GITHUB_*     GitHub OAuth      KIONGA_GOOGLE_*    Google
+  KIONGA_GITLAB_*     GitLab            KIONGA_MICROSOFT_* Microsoft Entra ID
+  DEX_ADMIN_EMAIL     Dex's own email + password account (public overlay)
+
+Secrets stay $VARS: Dex expands them itself when it loads the config, so the
+rendered file never holds a secret. Each OAuth app's callback URL is
+<issuer>/callback, for example http://localhost:5556/dex/callback.
+*/ -}}
+{{- $issuer := getenv "DEX_ISSUER" "http://localhost:5556/dex" -}}
+{{- $callback := print $issuer "/callback" -}}
+issuer: {{ $issuer }}
 
 storage:
   type: memory
@@ -18,39 +30,98 @@ staticClients:
     name: Kionga
     secretEnv: DEX_KIONGA_CLIENT_SECRET
     redirectURIs:
-      - http://localhost:8080/auth/callback
+      - {{ getenv "KIONGA_GATEWAY_URL" "http://localhost:8080" }}/auth/callback
+{{- if getenv "DEX_ADMIN_EMAIL" }}
+
+enablePasswordDB: true
+staticPasswords:
+  - email: {{ .Env.DEX_ADMIN_EMAIL }}
+    hashFromEnv: DEX_ADMIN_PASSWORD_HASH
+    username: admin
+    userID: kionga-admin
+{{- end }}
 
 connectors:
-  # LDAP / Active Directory. For AD use host: dc.example.com:636, userSearch
-  # username: sAMAccountName, groupSearch filter (objectClass=group) and
-  # groupAttr: member.
+{{- if eq (getenv "KIONGA_SSO_LDAP" "true") "true" }}
+  # LDAP / Active Directory. Locally a GLAuth test directory; point host,
+  # bindDN and the searches at your directory (AD: host dc.example.com:636,
+  # userSearch username sAMAccountName, groupSearch filter (objectClass=group)
+  # with groupAttr member).
   - type: ldap
     id: ldap
-    name: Company directory
+    name: {{ getenv "KIONGA_LDAP_NAME" "Company directory" }}
     config:
-      host: glauth:3893
-      insecureNoSSL: true            # local test directory only; use TLS (636) in production
-      bindDN: cn=dex,ou=svcaccts,dc=kionga,dc=dev
+      host: {{ getenv "KIONGA_LDAP_HOST" "glauth:3893" }}
+      insecureNoSSL: {{ getenv "KIONGA_LDAP_INSECURE_NO_SSL" "true" }}   # the local test directory only; use TLS (636) in production
+      bindDN: {{ getenv "KIONGA_LDAP_BIND_DN" "cn=dex,ou=svcaccts,dc=kionga,dc=dev" }}
       bindPW: $DEX_LDAP_BIND_PASSWORD
       usernamePrompt: Username
       userSearch:
-        baseDN: dc=kionga,dc=dev
+        baseDN: {{ getenv "KIONGA_LDAP_BASE_DN" "dc=kionga,dc=dev" }}
         filter: "(objectClass=posixAccount)"
         username: cn
         idAttr: uidNumber
         emailAttr: mail
         nameAttr: cn
       groupSearch:                   # groups list members by DN (groupOfNames / groupOfUniqueNames)
-        baseDN: ou=groups,dc=kionga,dc=dev
+        baseDN: {{ getenv "KIONGA_LDAP_GROUP_BASE_DN" "ou=groups,dc=kionga,dc=dev" }}
         filter: "(objectClass=groupOfUniqueNames)"
         userMatchers:
           - userAttr: DN
             groupAttr: uniqueMember
         nameAttr: ou
-
-  # More connectors (uncomment and supply secrets through the environment):
-  # - type: github     id: github   config: {clientID: $GITHUB_CLIENT_ID, clientSecret: $GITHUB_CLIENT_SECRET, redirectURI: http://localhost:5556/dex/callback, orgs: [{name: your-org}]}
-  # - type: google     id: google   config: {clientID: ..., clientSecret: ..., redirectURI: ...}
-  # - type: microsoft  id: entra    config: {clientID: ..., clientSecret: ..., tenant: <tenant-id>, redirectURI: ..., groups: [...]}
-  # - type: saml       id: okta     config: {ssoURL: ..., ca: /etc/dex/saml-ca.pem, redirectURI: ..., usernameAttr: name, emailAttr: email, groupsAttr: groups}
-  # - type: oidc       id: keycloak config: {issuer: https://keycloak.example/realms/x, clientID: ..., clientSecret: ..., redirectURI: ..., insecureEnableGroups: true}
+{{- end }}
+{{- if getenv "KIONGA_GITHUB_CLIENT_ID" }}
+  - type: github
+    id: github
+    name: GitHub
+    config:
+      clientID: $KIONGA_GITHUB_CLIENT_ID
+      clientSecret: $KIONGA_GITHUB_CLIENT_SECRET
+      redirectURI: {{ $callback }}
+{{- if getenv "KIONGA_GITHUB_ORG" }}
+      orgs:                          # only members of this organization; teams become groups
+        - name: {{ .Env.KIONGA_GITHUB_ORG }}
+      teamNameField: slug
+{{- end }}
+{{- end }}
+{{- if getenv "KIONGA_GOOGLE_CLIENT_ID" }}
+  - type: google
+    id: google
+    name: Google
+    config:
+      clientID: $KIONGA_GOOGLE_CLIENT_ID
+      clientSecret: $KIONGA_GOOGLE_CLIENT_SECRET
+      redirectURI: {{ $callback }}
+{{- if getenv "KIONGA_GOOGLE_HOSTED_DOMAIN" }}
+      hostedDomains: [{{ .Env.KIONGA_GOOGLE_HOSTED_DOMAIN }}]
+{{- end }}
+{{- end }}
+{{- if getenv "KIONGA_GITLAB_CLIENT_ID" }}
+  - type: gitlab
+    id: gitlab
+    name: GitLab
+    config:
+      baseURL: {{ getenv "KIONGA_GITLAB_URL" "https://gitlab.com" }}
+      clientID: $KIONGA_GITLAB_CLIENT_ID
+      clientSecret: $KIONGA_GITLAB_CLIENT_SECRET
+      redirectURI: {{ $callback }}
+{{- end }}
+{{- if getenv "KIONGA_MICROSOFT_CLIENT_ID" }}
+  - type: microsoft
+    id: microsoft
+    name: Microsoft
+    config:
+      clientID: $KIONGA_MICROSOFT_CLIENT_ID
+      clientSecret: $KIONGA_MICROSOFT_CLIENT_SECRET
+      redirectURI: {{ $callback }}
+      tenant: {{ getenv "KIONGA_MICROSOFT_TENANT" "common" }}
+{{- end }}
+{{- if eq (getenv "KIONGA_SSO_DEMO" "true") "true" }}
+  # A no-credentials OAuth round trip that signs in as a fixed demo person
+  # (Kilgore Trout). It shows single sign-on sign-up without registering an
+  # OAuth app. Local only: the public overlay turns it off.
+  - type: mockCallback
+    id: mock
+    name: Demo account (local only)
+{{- end }}

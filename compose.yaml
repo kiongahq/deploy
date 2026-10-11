@@ -146,6 +146,67 @@ services:
       timeout: 5s
       retries: 20
 
+  # ---- sign-in: every method on by default ---------------------------------
+  # Dex brokers single sign-on; the gateway trusts it and keeps local accounts
+  # as break-glass. Locally: a GLAuth test directory (password kionga-sso-dev:
+  # ada -> admin, grace -> engineer, alan -> signs up), a no-credentials demo
+  # account, and GitHub / Google / GitLab / Microsoft once their KIONGA_*_CLIENT_ID
+  # and _SECRET are set (.env). See sso/dex.yaml.
+  glauth:
+    image: glauth/glauth:v2.5.4@sha256:6d448805cf54fc2ca3bca2b87f89dffe571a354a69a667b5a910111be3cf430e
+    # The image's start script runs glauth with /app/config/config.cfg.
+    volumes:
+      - ./sso/glauth.cfg:/app/config/config.cfg:ro
+    expose: ["3893"]
+
+  dex:
+    image: ghcr.io/dexidp/dex:v2.46.0@sha256:933fcd3f523338c847b88ef84a7145fb2fcb7b9917f08418612afeaaa2001777
+    # Render the connectors enabled by the environment, derive the login-page
+    # provider list from them (shared with the gateway), then serve.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        gomplate -f /etc/kionga-sso/dex.yaml -o /tmp/dex.yaml &&
+        gomplate -d dex=/tmp/dex.yaml -f /etc/kionga-sso/providers.tmpl -o /var/dex/providers.json.tmp &&
+        mv /var/dex/providers.json.tmp /var/dex/providers.json &&
+        exec dex serve /tmp/dex.yaml
+    environment:
+      DEX_ISSUER: ${DEX_ISSUER:-http://localhost:${DEX_PORT:-5556}/dex}
+      KIONGA_GATEWAY_URL: ${KIONGA_GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}
+      DEX_KIONGA_CLIENT_SECRET: ${DEX_KIONGA_CLIENT_SECRET:-kionga-local-sso-client-secret}
+      DEX_LDAP_BIND_PASSWORD: ${DEX_LDAP_BIND_PASSWORD:-dex-bind-dev}
+      KIONGA_SSO_LDAP: ${KIONGA_SSO_LDAP:-true}
+      KIONGA_LDAP_NAME: ${KIONGA_LDAP_NAME:-}
+      KIONGA_LDAP_HOST: ${KIONGA_LDAP_HOST:-}
+      KIONGA_LDAP_INSECURE_NO_SSL: ${KIONGA_LDAP_INSECURE_NO_SSL:-}
+      KIONGA_LDAP_BIND_DN: ${KIONGA_LDAP_BIND_DN:-}
+      KIONGA_LDAP_BASE_DN: ${KIONGA_LDAP_BASE_DN:-}
+      KIONGA_LDAP_GROUP_BASE_DN: ${KIONGA_LDAP_GROUP_BASE_DN:-}
+      KIONGA_SSO_DEMO: ${KIONGA_SSO_DEMO:-true}
+      KIONGA_GITHUB_CLIENT_ID: ${KIONGA_GITHUB_CLIENT_ID:-}
+      KIONGA_GITHUB_CLIENT_SECRET: ${KIONGA_GITHUB_CLIENT_SECRET:-}
+      KIONGA_GITHUB_ORG: ${KIONGA_GITHUB_ORG:-}
+      KIONGA_GOOGLE_CLIENT_ID: ${KIONGA_GOOGLE_CLIENT_ID:-}
+      KIONGA_GOOGLE_CLIENT_SECRET: ${KIONGA_GOOGLE_CLIENT_SECRET:-}
+      KIONGA_GOOGLE_HOSTED_DOMAIN: ${KIONGA_GOOGLE_HOSTED_DOMAIN:-}
+      KIONGA_GITLAB_CLIENT_ID: ${KIONGA_GITLAB_CLIENT_ID:-}
+      KIONGA_GITLAB_CLIENT_SECRET: ${KIONGA_GITLAB_CLIENT_SECRET:-}
+      KIONGA_GITLAB_URL: ${KIONGA_GITLAB_URL:-https://gitlab.com}
+      KIONGA_MICROSOFT_CLIENT_ID: ${KIONGA_MICROSOFT_CLIENT_ID:-}
+      KIONGA_MICROSOFT_CLIENT_SECRET: ${KIONGA_MICROSOFT_CLIENT_SECRET:-}
+      KIONGA_MICROSOFT_TENANT: ${KIONGA_MICROSOFT_TENANT:-common}
+    volumes:
+      - ./sso:/etc/kionga-sso:ro
+      - sso-providers:/var/dex
+    ports: ["${DEX_PORT:-5556}:5556"]
+    depends_on:
+      glauth: {condition: service_started, required: false}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:5556/dex/.well-known/openid-configuration]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   gateway:
     build:
       context: ${KIONGA_SRC:-..}/platform/go
@@ -155,6 +216,7 @@ services:
       postgres: {condition: service_healthy}
       kafka-rest: {condition: service_healthy}
       objectstore-init: {condition: service_completed_successfully}
+      dex: {condition: service_healthy}
     environment:
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
@@ -181,6 +243,26 @@ services:
       # Local-mode RBAC role for unauthenticated requests: admin | operator |
       # user | engineer | viewer. Public deployments use OIDC claims instead.
       MLAIOPS_LOCAL_ROLE: ${MLAIOPS_LOCAL_ROLE:-admin}
+      # Sign-in: single sign-on through Dex (browser at localhost, gateway at
+      # dex:5556, one issuer) plus local accounts as break-glass.
+      OIDC_ISSUER: ${DEX_ISSUER:-http://localhost:${DEX_PORT:-5556}/dex}
+      OIDC_AUDIENCE: kionga
+      OIDC_CLIENT_ID: kionga
+      OIDC_CLIENT_SECRET: ${DEX_KIONGA_CLIENT_SECRET:-kionga-local-sso-client-secret}
+      OIDC_AUTH_URL: ${DEX_ISSUER:-http://localhost:${DEX_PORT:-5556}/dex}/auth
+      OIDC_TOKEN_URL: http://dex:5556/dex/token
+      OIDC_JWKS_URL: http://dex:5556/dex/keys
+      OIDC_REDIRECT_URL: ${KIONGA_GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-8080}}/auth/callback
+      OIDC_SCOPES: openid profile email groups federated:id   # federated:id: Dex names the connector used
+      KIONGA_SSO_SINGLE_TENANT: "true"
+      KIONGA_SSO_PROVIDERS_FILE: /etc/kionga/sso/providers.json
+      KIONGA_SSO_GROUP_ROLES: '{"ml-admins":"admin","data-team":"engineer"}'
+      # Sign-up on first single sign-on: approval (an access request for an
+      # administrator) | open (a starter account at once) | off.
+      KIONGA_SIGNUP: ${KIONGA_SIGNUP:-approval}
+      KIONGA_SIGNUP_EMAIL_DOMAINS: ${KIONGA_SIGNUP_EMAIL_DOMAINS:-}
+      KIONGA_SIGNUP_PROFILE: ${KIONGA_SIGNUP_PROFILE:-starter}
+      KIONGA_LOCAL_LOGIN: "true"
       MLAIOPS_LOCAL_USERNAME: ${MLAIOPS_LOCAL_USERNAME:-admin}
       MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}
       # Engineering blog media (images) live in object storage.
@@ -189,6 +271,8 @@ services:
       KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
       KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
+    volumes:
+      - sso-providers:/etc/kionga/sso:ro
     ports: ["${GATEWAY_PORT:-8080}:8080"]
 
   feature-gateway:
@@ -508,6 +592,7 @@ services:
       - workspace-claude:/home/coder/.claude
 
 volumes:
+  sso-providers:
   postgres-data:
   redis-data:
   objectstore-data:

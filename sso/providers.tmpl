@@ -1,0 +1,13 @@
+{{- /*
+The gateway's login-page buttons (KIONGA_SSO_PROVIDERS_FILE), derived from
+the rendered Dex config so a button exists exactly when its connector does.
+*/ -}}
+{{- $dex := ds "dex" -}}
+{{- $providers := coll.Slice -}}
+{{- range (index $dex "connectors" | default coll.Slice) -}}
+{{- $providers = $providers | coll.Append (coll.Dict "id" .id "name" .name "type" .type) -}}
+{{- end -}}
+{{- if (and (has $dex "enablePasswordDB") $dex.enablePasswordDB) -}}
+{{- $providers = $providers | coll.Append (coll.Dict "id" "local" "name" "Email and password" "type" "password") -}}
+{{- end -}}
+{{ $providers | data.ToJSON }}

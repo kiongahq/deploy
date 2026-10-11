@@ -75,34 +75,54 @@ Docker volumes are not deleted by startup or this source-tree consolidation.
 To use another S3-compatible store, point the `*_S3_ENDPOINT*` settings at it
 and drop the `objectstore` service.
 
-## Single sign-on (SSO, OAuth, LDAP, SAML)
+## Sign-in and sign-up (SSO, OAuth, LDAP, local)
 
-Kionga signs people in through [Dex](https://dexidp.io), which brokers LDAP and
-Active Directory, SAML 2.0, GitHub, GitLab, Google, Microsoft Entra and any OIDC
-provider. Local accounts can stay on as break-glass access.
+`make local-up` starts every sign-in method. [Dex](https://dexidp.io) brokers
+single sign-on and the gateway keeps local accounts as break-glass access.
+Open <http://localhost:8080/login.html>:
 
-```bash
-make sso-up         # Dex + a test LDAP directory (GLAuth), gateway in SSO mode
-make sso-down       # back to local accounts only
-```
+| Button | What it is | Try it |
+| --- | --- | --- |
+| **Company directory** | LDAP through Dex, against a GLAuth test directory | `ada` (group `ml-admins`, admin), `grace` (`data-team`, engineer), `alan` (no group: signs up). Password `kionga-sso-dev` |
+| **Demo account (local only)** | Dex's no-credentials OAuth round trip, signs in as a fixed demo person | One click; a first sign-in signs up |
+| **GitHub / Google / GitLab / Microsoft** | OAuth through Dex | Appear once `KIONGA_<PROVIDER>_CLIENT_ID` and `_SECRET` are set in `deploy/.env`, then `make sso-reload` |
+| Local form | Gateway accounts | `admin` / `mlaiops-local` |
 
-Open <http://localhost:8080/login.html> and choose **Sign in with Company
-directory**. Test users (password `kionga-sso-dev`): `ada` (group `ml-admins`,
-role admin), `grace` (`data-team`, engineer), `alan` (no mapped group, no role).
-The local `admin` account still works.
+**Sign-up.** Someone signing in through SSO for the first time with no directory
+group that maps to a role gets an account by `KIONGA_SIGNUP`:
 
-To use your own directory, edit the connector in `sso/dex.yaml` (commented
-examples cover GitHub, Google, Entra, SAML and Keycloak) and set in `deploy/.env`:
+- `approval` (default): an access request lands in **Users & access** for an
+  administrator to approve. Until then the person sees a "waiting for approval"
+  banner and can use no service.
+- `open`: an active `user` account at once, with the `KIONGA_SIGNUP_PROFILE`
+  resource profile (default `starter`).
+- `off`: no account; only mapped directory groups give access.
+
+`KIONGA_SIGNUP_EMAIL_DOMAINS=example.com,corp.io` limits sign-up to verified
+emails at those domains. Existing accounts are never changed by signing in
+(a suspended account stays suspended).
+
+**Adding an OAuth provider.** Register an OAuth app with callback URL
+`http://localhost:5556/dex/callback`, put its client id and secret in
+`deploy/.env` (`KIONGA_GITHUB_CLIENT_ID`, `KIONGA_GITHUB_CLIENT_SECRET`, and
+optionally `KIONGA_GITHUB_ORG`; likewise `GOOGLE`, `GITLAB`, `MICROSOFT`), then
+`make sso-reload`. Dex renders `sso/dex.yaml` with the connectors whose ids are
+set and writes the login-page list for the gateway, so the button appears
+without restarting the gateway. Secrets stay environment variables that Dex
+expands itself; the rendered config never holds them.
 
 | Variable | Purpose |
 | --- | --- |
-| `KIONGA_SSO_PROVIDERS` | JSON list of `{id, name, type}`, one per Dex connector shown on the login page |
-| `KIONGA_SSO_GROUP_ROLES` | JSON map of IdP group to Kionga role, e.g. `{"ml-admins":"admin"}` |
+| `KIONGA_SIGNUP`, `KIONGA_SIGNUP_EMAIL_DOMAINS`, `KIONGA_SIGNUP_PROFILE` | Sign-up policy (above) |
+| `KIONGA_SSO_LDAP`, `KIONGA_LDAP_*` | LDAP connector on/off and your directory's host, bind DN and base DNs |
+| `KIONGA_SSO_DEMO` | `false` hides the demo account |
+| `KIONGA_SSO_GROUP_ROLES` (compose.yaml) | IdP group to Kionga role, e.g. `{"ml-admins":"admin"}` |
 | `DEX_KIONGA_CLIENT_SECRET`, `DEX_LDAP_BIND_PASSWORD` | Secrets for the gateway client and the LDAP bind |
-| `KIONGA_LOCAL_LOGIN` | `true` keeps local accounts next to SSO (requires `MLAIOPS_LOCAL_PASSWORD`) |
 
-The overlay runs Dex with in-memory storage, which suits a laptop. For a shared
-deployment use Dex's SQL or Kubernetes storage and an HTTPS issuer. See
+Dex keeps state in memory, so recreating it signs single sign-on users out.
+`compose.public.yaml` runs the same Dex at `https://$MLAIOPS_DOMAIN/dex` with
+the test directory and demo account off, Dex's own email + password admin on,
+and requires `MLAIOPS_LOCAL_PASSWORD` for the break-glass account. See
 [Single sign-on](https://kiongahq.github.io/docs/operations/single-sign-on/).
 
 ## Single VM (production pilot)
