@@ -5,8 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT/compose.yaml"
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
-GATEWAY_PORT_EXPLICIT="${GATEWAY_PORT+x}"
-GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 REBUILD="${KIONGA_REBUILD:-0}"
 
 # Compose discovers .env from the working directory. Running from the repository
@@ -51,41 +49,80 @@ warn_low_disk_space() {
   fi
 }
 
+# Probe the address Docker will bind (loopback unless KIONGA_BIND_ADDRESS
+# widens it). Probing 0.0.0.0 instead misses a native Postgres or Redis on
+# 127.0.0.1: on macOS both binds succeed, and Docker then fails to publish.
 port_available() {
-  python3 -c 'import socket, sys; s = socket.socket(); s.bind(("0.0.0.0", int(sys.argv[1])))' "$1" \
-    >/dev/null 2>&1
+  python3 -c 'import socket, sys; s = socket.socket(); s.bind((sys.argv[1], int(sys.argv[2])))' \
+    "${KIONGA_BIND_ADDRESS:-127.0.0.1}" "$1" >/dev/null 2>&1
 }
 
-choose_gateway_port() {
-  local candidate configured existing
-  configured="$(compose config --format json | python3 -c 'import json,sys; p=json.load(sys.stdin)["services"]["gateway"]["ports"]; print(next(str(x["published"]) for x in p if int(x["target"]) == 8080))')" \
-    || fail 'could not resolve the gateway port from Docker Compose'
-  if [[ -z "$GATEWAY_PORT_EXPLICIT" && "$configured" != 8080 ]]; then
-    GATEWAY_PORT_EXPLICIT=1 # A port set in .env is also an explicit choice.
-  fi
-  GATEWAY_PORT="$configured"
-  existing="$(compose port gateway 8080 2>/dev/null | sed -n '1s/.*://p' || true)"
-  if port_available "$GATEWAY_PORT" || [[ "$existing" == "$GATEWAY_PORT" ]]; then
-    return 0
-  fi
-  if [[ -n "$GATEWAY_PORT_EXPLICIT" ]]; then
-    fail "gateway port $GATEWAY_PORT is in use. Choose another, e.g. GATEWAY_PORT=18080 make local-up."
-  fi
-  if [[ "$existing" =~ ^1808[0-4]$ ]]; then
-    GATEWAY_PORT="$existing"
-    export GATEWAY_PORT
-    printf 'Port 8080 is in use; reusing gateway port %s.\n' "$GATEWAY_PORT"
-    return 0
-  fi
-  for candidate in 18080 18081 18082 18083 18084; do
-    if port_available "$candidate"; then
-      GATEWAY_PORT="$candidate"
-      export GATEWAY_PORT
-      printf 'Port 8080 is in use; using gateway port %s instead.\n' "$GATEWAY_PORT"
-      return 0
-    fi
+# Every host port the default profile publishes: service, container port,
+# variable, default. tests/test_local_up_ports.py keeps this in step with
+# compose.yaml.
+PUBLISHED_PORTS=(
+  "gateway 8080 GATEWAY_PORT 8080"
+  "postgres 5432 POSTGRES_PORT 5432"
+  "redis 6379 REDIS_PORT 6379"
+  "kafka 9092 KAFKA_PORT 9092"
+  "kafka-rest 8082 KAFKA_REST_PORT 8082"
+  "objectstore 9000 OBJECTSTORE_PORT 9000"
+  "objectstore 9001 OBJECTSTORE_CONSOLE_PORT 9001"
+  "mlflow 5000 MLFLOW_PORT 15000"
+  "dex 5556 DEX_PORT 5556"
+  "feature-gateway 8083 FEATURE_GATEWAY_PORT 8083"
+  "storage-proxy 8084 STORAGE_PROXY_PORT 8084"
+  "langfuse 3000 LANGFUSE_PORT 3000"
+  "prefect-server 4200 PREFECT_PORT 4200"
+  "serving-manager 8085 SERVING_MANAGER_PORT 8085"
+  "trace-proxy 8081 TRACE_PROXY_PORT 8081"
+  "agent-runtime 9000 AGENT_RUNTIME_PORT 19000"
+  "jupyter 8888 JUPYTER_PORT 8888"
+)
+
+# choose_ports keeps each configured host port when it is free or already held
+# by this stack, and otherwise moves it to the first free port of
+# <default>+10000..+10004 (5432 -> 15432), exporting the variable so Compose
+# and every URL built from it agree. A port set explicitly (environment or
+# .env) is never moved: that fails with the variable to change.
+choose_ports() {
+  local entry service target var default configured existing candidate offset i
+  local rendered reserved=" " # space-delimited: bash 3.2 (macOS) treats an empty array as unset under set -u
+  local -a configured_ports
+  rendered="$(compose config --format json)" || fail 'could not render the Docker Compose configuration'
+  # Pass 1: every configured port is reserved, so a moved port never lands on
+  # another service's port (9000 + 10000 is agent-runtime's 19000).
+  for i in "${!PUBLISHED_PORTS[@]}"; do
+    read -r service target var default <<<"${PUBLISHED_PORTS[$i]}"
+    configured_ports[i]="$(python3 -c 'import json,sys; s=json.loads(sys.stdin.read())["services"].get(sys.argv[1], {}); print(next((str(p["published"]) for p in s.get("ports", []) if int(p["target"]) == int(sys.argv[2])), ""))' "$service" "$target" <<<"$rendered")"
+    reserved+="${configured_ports[i]} "
   done
-  fail 'gateway ports 8080 and 18080-18084 are occupied; set GATEWAY_PORT to a free port.'
+  # Pass 2: keep free ports and this stack's own; move busy defaults.
+  for i in "${!PUBLISHED_PORTS[@]}"; do
+    read -r service target var default <<<"${PUBLISHED_PORTS[$i]}"
+    configured="${configured_ports[i]}"
+    [[ -n "$configured" ]] || continue
+    existing="$(compose port "$service" "$target" 2>/dev/null | sed -n '1s/.*://p' || true)"
+    if [[ "$existing" == "$configured" ]] || port_available "$configured"; then
+      continue
+    fi
+    if [[ -n "${!var+x}" || "$configured" != "$default" ]]; then
+      fail "$service port $configured is in use. Set $var to a free port (in .env or the environment) and run make local-up again."
+    fi
+    for offset in 10000 10001 10002 10003 10004; do
+      candidate=$((default + offset))
+      ((candidate <= 65535)) || continue
+      [[ "$reserved" == *" $candidate "* ]] && continue
+      if [[ "$existing" == "$candidate" ]] || port_available "$candidate"; then
+        export "$var=$candidate"
+        reserved+="$candidate "
+        printf 'Port %s is in use; %s uses %s instead (%s=%s).\n' "$configured" "$service" "$candidate" "$var" "$candidate"
+        continue 2
+      fi
+    done
+    fail "$service ports $configured and $((default + 10000))-$((default + 10004)) are occupied; set $var to a free port."
+  done
+  GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 }
 
 retry() {
@@ -239,7 +276,7 @@ main() {
   docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (the 'docker compose' command was not found)."
   docker info >/dev/null 2>&1 || fail "Docker is installed but its daemon is not running. Start Docker and run 'make local-up' again."
   warn_low_disk_space
-  choose_gateway_port
+  choose_ports
 
   printf 'Starting Kionga with at most %s concurrent image downloads.\n' "$COMPOSE_PARALLEL_LIMIT"
   retry "Download missing upstream images" \
@@ -275,4 +312,7 @@ main() {
   printf '  Stop:     make local-down\n'
 }
 
-main "$@"
+# Sourcing the script (tests) defines the functions without starting anything.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
