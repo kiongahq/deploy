@@ -1,4 +1,7 @@
-FROM ghcr.io/mlflow/mlflow:v3.1.1
+# MLflow must match pipeline-runner (requirements.txt) and the Jupyter image
+# (kiongahq/workspace jupyter/Dockerfile) so trained models load everywhere.
+ARG MLFLOW_VERSION=v3.16.1
+FROM ghcr.io/mlflow/mlflow:${MLFLOW_VERSION}
 
 # boto3/psycopg2: S3 artifacts + PostgreSQL backend for the tracking server.
 # scikit-learn + uvicorn: this image doubles as the model-serving runtime

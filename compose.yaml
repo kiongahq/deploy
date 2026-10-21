@@ -11,6 +11,7 @@ name: mlaiops
 
 services:
   postgres:
+    restart: unless-stopped
     # pgvector build of PostgreSQL 16: same database, plus the vector extension
     # used by agent long-term memory and RAG.
     image: pgvector/pgvector:pg16
@@ -29,6 +30,7 @@ services:
       retries: 20
 
   redis:
+    restart: unless-stopped
     image: redis:7.4.5-alpine
     command: [redis-server, --appendonly, "yes"]
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"]
@@ -40,6 +42,7 @@ services:
       retries: 20
 
   kafka:
+    restart: unless-stopped
     image: apache/kafka:3.9.1
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${KAFKA_PORT:-9092}:9092"]
     environment:
@@ -59,6 +62,7 @@ services:
       retries: 20
 
   kafka-rest:
+    restart: unless-stopped
     # Karapace is an Apache-licensed, Confluent-v2-compatible Kafka REST proxy.
     # Its multi-architecture image is substantially smaller than the JVM proxy
     # image, which keeps a cold local bootstrap practical on laptops.
@@ -88,6 +92,7 @@ services:
 
   # Bundled S3-compatible object store: RustFS (Apache-2.0).
   objectstore:
+    restart: unless-stopped
     image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
     environment:
       RUSTFS_VOLUMES: /data
@@ -122,20 +127,27 @@ services:
       - ./objectstore-init.py:/bootstrap/objectstore-init.py:ro
 
   mlflow:
+    restart: unless-stopped
     image: mlaiops-mlflow
     build:
       context: mlflow
     depends_on:
       postgres: {condition: service_healthy}
       objectstore-init: {condition: service_completed_successfully}
+    # Migrate first: a database created by an older MLflow refuses to start
+    # until `mlflow db upgrade` runs (a no-op when already current).
     command:
-      - mlflow
-      - server
-      - --host=0.0.0.0
-      - --port=5000
-      - --backend-store-uri=postgresql://mlaiops:mlaiops-local@postgres:5432/mlaiops
-      - --default-artifact-root=s3://mlaiops-models
+      - sh
+      - -c
+      - >-
+        mlflow db upgrade "$$BACKEND_STORE_URI" &&
+        exec mlflow server --host=0.0.0.0 --port=5000
+        --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://mlaiops-models
     environment:
+      BACKEND_STORE_URI: postgresql://mlaiops:mlaiops-local@postgres:5432/mlaiops
+      # MLflow rejects unknown Host headers (DNS-rebinding protection). Allow
+      # the in-network name and the published localhost port only.
+      MLFLOW_SERVER_ALLOWED_HOSTS: mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       AWS_ACCESS_KEY_ID: mlaiops
       AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
@@ -153,6 +165,7 @@ services:
   # account, and GitHub / Google / GitLab / Microsoft once their KIONGA_*_CLIENT_ID
   # and _SECRET are set (.env). See sso/dex.yaml.
   glauth:
+    restart: unless-stopped
     image: glauth/glauth:v2.5.4@sha256:6d448805cf54fc2ca3bca2b87f89dffe571a354a69a667b5a910111be3cf430e
     # The image's start script runs glauth with /app/config/config.cfg.
     volumes:
@@ -160,6 +173,7 @@ services:
     expose: ["3893"]
 
   dex:
+    restart: unless-stopped
     image: ghcr.io/dexidp/dex:v2.46.0@sha256:933fcd3f523338c847b88ef84a7145fb2fcb7b9917f08418612afeaaa2001777
     # Render the connectors enabled by the environment, derive the login-page
     # provider list from them (shared with the gateway), then serve.
@@ -208,6 +222,7 @@ services:
       retries: 30
 
   gateway:
+    restart: unless-stopped
     build:
       context: ${KIONGA_SRC:-..}/platform/go
       dockerfile: Dockerfile
@@ -276,6 +291,7 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"]
 
   feature-gateway:
+    restart: unless-stopped
     build:
       context: ${KIONGA_SRC:-..}/platform/go
       dockerfile: Dockerfile
@@ -290,6 +306,7 @@ services:
   #   docker compose --profile log-export up -d log-exporter
   # and set KIONGA_LOG_EXPORT_* in .env (secrets as files under config/secrets).
   log-exporter:
+    restart: unless-stopped
     profiles: [log-export]
     build:
       context: ${KIONGA_SRC:-..}/platform/go
@@ -325,6 +342,7 @@ services:
     ports: ["127.0.0.1:9201:9200"]
 
   storage-proxy:
+    restart: unless-stopped
     build:
       context: ${KIONGA_SRC:-..}/platform/go
       dockerfile: Dockerfile
@@ -338,6 +356,7 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${STORAGE_PROXY_PORT:-8084}:8084"]
 
   langfuse:
+    restart: unless-stopped
     image: langfuse/langfuse:2
     depends_on:
       postgres: {condition: service_healthy}
@@ -361,6 +380,7 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${LANGFUSE_PORT:-3000}:3000"]
 
   prefect-server:
+    restart: unless-stopped
     image: prefecthq/prefect:3-latest
     command: [prefect, server, start, --host, "0.0.0.0"]
     environment:
@@ -402,6 +422,7 @@ services:
     restart: unless-stopped
 
   serving-manager:
+    restart: unless-stopped
     build:
       context: ${KIONGA_SRC:-..}/serving
     # Root inside this designated engine-control service: the Docker socket
@@ -456,6 +477,7 @@ services:
     restart: "no"
 
   trace-proxy:
+    restart: unless-stopped
     build:
       context: ${KIONGA_SRC:-..}/trace-proxy
     depends_on:
@@ -471,6 +493,7 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${TRACE_PROXY_PORT:-8081}:8081"]
 
   agent-runtime:
+    restart: unless-stopped
     image: mlaiops-agent-runtime
     build:
       context: ${KIONGA_SRC:-..}/agent-runtime
@@ -507,6 +530,7 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${AGENT_RUNTIME_PORT:-19000}:9000"]
 
   jupyter:
+    restart: unless-stopped
     build:
       context: ${KIONGA_SRC:-..}/workspace
       dockerfile: jupyter/Dockerfile
@@ -563,6 +587,7 @@ services:
       retries: 4
 
   ide:
+    restart: unless-stopped
     profiles: [ide]
     build:
       context: ${KIONGA_SRC:-..}/workspace
