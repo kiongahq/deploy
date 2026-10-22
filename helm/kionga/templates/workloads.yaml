@@ -80,6 +80,13 @@ spec:
             - {name: TRACE_PROXY_IMAGE, value: {{ index $.Values.images "trace-proxy" | quote }}}
             - {name: WORKBENCH_IMAGE, value: {{ $.Values.images.jupyter | quote }}}
             - {name: IDE_IMAGE, value: {{ $.Values.images.ide | quote }}}
+            {{- if and (eq $name "operator") $.Values.imagePullSecrets }}
+            {{- $pullSecrets := list }}
+            {{- range $.Values.imagePullSecrets }}{{ $pullSecrets = append $pullSecrets .name }}{{ end }}
+            # Workspace and agent pods in workspaceNamespace reference the same
+            # Secret names; create the Secrets there too.
+            - {name: KIONGA_IMAGE_PULL_SECRETS, value: {{ join "," $pullSecrets | quote }}}
+            {{- end }}
             {{- range $component.secrets }}
             - {name: {{ . }}_FILE, value: /run/secrets/{{ . }}}
             {{- end }}

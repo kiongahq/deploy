@@ -19,7 +19,7 @@ spec:
       serviceAccountName: mlaiops-gateway
       containers:
         - name: gateway
-          image: ghcr.io/mlaiops/gateway:latest
+          image: ghcr.io/kiongahq/gateway:latest
           envFrom:
             - secretRef: {name: mlaiops-openfaas, optional: true}
           env:
@@ -62,7 +62,7 @@ spec:
     spec:
       containers:
         - name: feature-gateway
-          image: ghcr.io/mlaiops/feature-gateway:latest
+          image: ghcr.io/kiongahq/feature-gateway:latest
           ports: [{name: http, containerPort: 8083}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
@@ -82,7 +82,7 @@ spec:
     spec:
       containers:
         - name: storage-proxy
-          image: ghcr.io/mlaiops/storage-proxy:latest
+          image: ghcr.io/kiongahq/storage-proxy:latest
           envFrom: [{secretRef: {name: mlaiops-storage-credentials}}]
           ports: [{name: http, containerPort: 8084}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
@@ -103,7 +103,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: ghcr.io/mlaiops/metrics-collector:latest
+          image: ghcr.io/kiongahq/metrics-collector:latest
           ports: [{name: metrics, containerPort: 9090}]
           readinessProbe: {httpGet: {path: /healthz, port: metrics}}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true}

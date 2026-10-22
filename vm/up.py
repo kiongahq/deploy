@@ -47,6 +47,21 @@ def deployment_environment(path):
     return env
 
 
+PULL_HELP = (
+    "Could not pull the pinned images. Kionga's ghcr.io/kiongahq images are private: as the user "
+    "running this script, log in once with a GitHub token that has read:packages:\n"
+    "  echo \"$GHCR_TOKEN\" | docker login ghcr.io -u <github-user> --password-stdin\n"
+    "Docker keeps the credential in ~/.docker/config.json (or $DOCKER_CONFIG). Also check the "
+    "digests and the VM's network access to the registry."
+)
+
+
+def pull_images(compose, env):
+    result = subprocess.run([*compose, "pull"], env=env)
+    if result.returncode != 0:
+        raise SystemExit(PULL_HELP)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("deployment", help="non-secret deployment JSON")
@@ -63,7 +78,7 @@ def main():
     if args.validate_only:
         print("VM deployment inputs and Compose configuration validated")
         return
-    subprocess.run([*compose, "pull"], env=env, check=True)
+    pull_images(compose, env)
     subprocess.run([*compose, "up", "-d", "--no-build", "--pull", "never", "--force-recreate"], env=env, check=True)
     url = "https://" + env["KIONGA_DOMAIN"] + "/api/v1/ready"
     for _ in range(60):

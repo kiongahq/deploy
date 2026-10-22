@@ -14,7 +14,7 @@ spec:
       serviceAccountName: mlaiops-operator
       containers:
         - name: worker
-          image: ghcr.io/mlaiops/integration-worker:latest
+          image: ghcr.io/kiongahq/integration-worker:latest
           env:
             - {name: KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
             - {name: MLAIOPS_TARGET_NAMESPACE, value: default}

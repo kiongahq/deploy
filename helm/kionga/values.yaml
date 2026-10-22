@@ -2,6 +2,9 @@
 # Infrastructure engines/databases are prerequisites, not silently installed demos.
 workspaceNamespace: kionga-workloads
 storageClass: ""
+# Registry credentials for private images, e.g. [{name: ghcr-pull}]. Create the
+# kubernetes.io/dockerconfigjson Secret in the release namespace (platform pods)
+# and in workspaceNamespace (workspace and agent pods the operator creates).
 imagePullSecrets: []
 images:
   gateway: ""

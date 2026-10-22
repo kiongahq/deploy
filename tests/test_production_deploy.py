@@ -55,6 +55,19 @@ def test_vm_compose_resolves_without_repository_dotenv(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
+def test_vm_pull_failure_explains_private_registry_login(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1)
+    monkeypatch.setattr(vm.subprocess, "run", fake_run)
+    with pytest.raises(SystemExit) as failure:
+        vm.pull_images(["docker", "compose"], {})
+    assert calls == [["docker", "compose", "pull"]]
+    assert "docker login ghcr.io" in str(failure.value) and "read:packages" in str(failure.value)
+
+
 @pytest.mark.parametrize("problem", ["tag", "origin", "missing", "world-readable"])
 def test_vm_rejects_unsafe_inputs(tmp_path, problem):
     path, data = vm_inputs(tmp_path)
@@ -117,6 +130,22 @@ def test_managed_chart_security_and_availability(tmp_path):
     assert any(d["kind"] == "ExternalSecret" for d in docs)
     assert len([d for d in docs if d["kind"] == "ServiceMonitor"]) == 3
     assert any(d["kind"] == "PrometheusRule" for d in docs)
+
+
+def test_private_registry_pull_secrets_reach_every_pod(tmp_path):
+    docs = render_chart(tmp_path, imagePullSecrets=[{"name": "ghcr-pull"}, {"name": "mirror"}])
+    for deployment in (d for d in docs if d["kind"] == "Deployment"):
+        assert deployment["spec"]["template"]["spec"]["imagePullSecrets"] == [{"name": "ghcr-pull"}, {"name": "mirror"}]
+    operator = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-operator"))
+    env = {e["name"]: e.get("value") for e in operator["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["KIONGA_IMAGE_PULL_SECRETS"] == "ghcr-pull,mirror"
+
+
+def test_no_pull_secrets_by_default(tmp_path):
+    for deployment in (d for d in render_chart(tmp_path) if d["kind"] == "Deployment"):
+        pod = deployment["spec"]["template"]["spec"]
+        assert "imagePullSecrets" not in pod
+        assert all(e["name"] != "KIONGA_IMAGE_PULL_SECRETS" for e in pod["containers"][0]["env"])
 
 
 def test_chart_refuses_unpinned_default_images():
