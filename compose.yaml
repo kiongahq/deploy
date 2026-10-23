@@ -299,6 +299,7 @@ services:
     depends_on:
       redis: {condition: service_healthy}
     environment:
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       REDIS_URL: redis://redis:6379
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${FEATURE_GATEWAY_PORT:-8083}:8083"]
 
@@ -352,6 +353,7 @@ services:
     depends_on:
       objectstore: {condition: service_healthy}
     environment:
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       S3_ENDPOINT: http://objectstore:9000
       S3_ACCESS_KEY: mlaiops
       S3_SECRET_KEY: mlaiops-local-secret
@@ -433,6 +435,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       SERVE_IMAGE: mlaiops-mlflow
       SERVE_PIDS_LIMIT: ${SERVE_PIDS_LIMIT:-256}
       # Empty: negotiate with the daemon. Pin with a value such as v1.44.
