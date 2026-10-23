@@ -324,8 +324,10 @@ services:
       KIONGA_LOG_EXPORT_PASSWORD_FILE: ${KIONGA_LOG_EXPORT_PASSWORD_FILE:-}
       KIONGA_LOG_EXPORT_CA_FILE: ${KIONGA_LOG_EXPORT_CA_FILE:-}
       KIONGA_LOG_EXPORT_ANONYMOUS: ${KIONGA_LOG_EXPORT_ANONYMOUS:-false}
+      KIONGA_LOG_EXPORT_INSECURE_TLS: ${KIONGA_LOG_EXPORT_INSECURE_TLS:-false}
+      KIONGA_LOG_EXPORT_BATCH: ${KIONGA_LOG_EXPORT_BATCH:-}
     volumes:
-      - ../config/secrets:/run/kionga-secrets:ro
+      - ./config/secrets:/run/kionga-secrets:ro
     ports: ["127.0.0.1:${LOG_EXPORTER_PORT:-8086}:8086"]
 
   # Local, unauthenticated test targets for the exporter (large images).
@@ -433,6 +435,8 @@ services:
     environment:
       SERVE_IMAGE: mlaiops-mlflow
       SERVE_PIDS_LIMIT: ${SERVE_PIDS_LIMIT:-256}
+      # Empty: negotiate with the daemon. Pin with a value such as v1.44.
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-}
       PLATFORM_NETWORK: mlaiops_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000

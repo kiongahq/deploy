@@ -46,3 +46,11 @@ def test_pinned_services_exist(service):
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     if service not in services:
         pytest.fail(f"{service} is not in compose.yaml; update ALWAYS_LOOPBACK")
+
+
+def test_log_exporter_reads_the_deploy_secrets_folder_and_every_setting():
+    exporter = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]["log-exporter"]
+    assert "./config/secrets:/run/kionga-secrets:ro" in exporter["volumes"]
+    assert (ROOT / "config/secrets/README").is_file()
+    for name in ("KIONGA_LOG_EXPORT_INSECURE_TLS", "KIONGA_LOG_EXPORT_BATCH"):
+        assert name in exporter["environment"], f"{name} is read by the exporter but not passed through"

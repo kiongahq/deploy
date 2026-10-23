@@ -41,6 +41,14 @@ secretNames:
   feature-gateway: kionga-features
   storage-proxy: kionga-storage
   trace-proxy: kionga-tracing
+# Each component also accepts extraEnv: a list of Kubernetes EnvVar entries
+# added to its container. Use valueFrom.secretKeyRef for credentials (never put
+# secret values in values files), for example external storage secret_ref
+# variables on the gateway:
+#   gateway:
+#     extraEnv:
+#       - name: TENANT_A_STORAGE
+#         valueFrom: {secretKeyRef: {name: tenant-a-storage, key: credentials}}
 components:
   gateway:
     replicas: 3

@@ -90,6 +90,9 @@ spec:
             {{- range $component.secrets }}
             - {name: {{ . }}_FILE, value: /run/secrets/{{ . }}}
             {{- end }}
+            {{- with $component.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- if $component.port }}
           {{- if eq $name "gateway" }}
           ports: [{name: http, containerPort: {{ $component.port }}}, {name: metrics, containerPort: 9090}, {name: workspace-api, containerPort: 8087}]

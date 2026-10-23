@@ -141,6 +141,18 @@ def test_private_registry_pull_secrets_reach_every_pod(tmp_path):
     assert env["KIONGA_IMAGE_PULL_SECRETS"] == "ghcr-pull,mirror"
 
 
+def test_component_extra_env_supports_secret_references(tmp_path):
+    components = yaml.safe_load((ROOT / "helm/kionga/values.yaml").read_text())["components"]
+    gateway = dict(components["gateway"], extraEnv=[
+        {"name": "TENANT_A_STORAGE", "valueFrom": {"secretKeyRef": {"name": "tenant-a-storage", "key": "credentials"}}}])
+    docs = render_chart(tmp_path, components={**components, "gateway": gateway})
+    deployment = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] == "kionga-gateway")
+    env = {e["name"]: e for e in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["TENANT_A_STORAGE"]["valueFrom"]["secretKeyRef"] == {"name": "tenant-a-storage", "key": "credentials"}
+    others = [d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] != "kionga-gateway"]
+    assert all("TENANT_A_STORAGE" not in str(d) for d in others)
+
+
 def test_no_pull_secrets_by_default(tmp_path):
     for deployment in (d for d in render_chart(tmp_path) if d["kind"] == "Deployment"):
         pod = deployment["spec"]["template"]["spec"]
