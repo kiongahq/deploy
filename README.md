@@ -37,6 +37,24 @@ targets: `make local-status`, `make local-logs`, `make local-down`, `make ide-up
 (browser IDE), `make workspace-pull` (update clean checkouts) and `make smoke`
 (end-to-end check against the running stack).
 
+### Operating systems and engine choice
+
+Docker is the default: use Docker Engine with Compose on Linux, or Docker Desktop
+on macOS and Windows. On Windows, run the Bash and Make commands inside a WSL 2
+Linux distribution with Docker integration enabled; keep checkouts in its Linux
+filesystem.
+
+Podman is optional. Use `KIONGA_ENGINE=podman make local-up` after configuring
+its rootful engine and a `docker-compose` provider. macOS needs a Podman machine;
+Linux and the documented WSL setup use the native Linux engine. The wrapper
+selects the Podman socket override and native builds for additional source
+contexts. Docker users do not need Podman or this override.
+
+See [OS and engine setup](https://kiongahq.github.io/docs/operations/local/#choose-an-operating-system-and-container-engine)
+for the commands, Docker-compatible CLI usage, and validation limits. Keep local
+engine preferences and `.env` settings out of version control. Changing engines
+does not transfer images or volumes automatically.
+
 For a server or a cluster:
 
 ```bash

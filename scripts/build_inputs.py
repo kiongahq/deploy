@@ -92,7 +92,7 @@ def service_hash(build: dict) -> str:
 
 def image_id(image: str) -> str:
     result = subprocess.run(
-        ["docker", "image", "inspect", "--format", "{{.Id}}", image],
+        ["bash", str(Path(__file__).with_name("container.sh")), "image", "inspect", "--format", "{{.Id}}", image],
         capture_output=True, text=True,
     )
     return result.stdout.strip() if result.returncode == 0 else ""

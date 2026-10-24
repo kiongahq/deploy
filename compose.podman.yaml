@@ -1,0 +1,7 @@
+# Only the two trusted engine-control services need access to Podman's socket.
+# Keep SELinux confinement enabled for the application and job containers.
+services:
+  pipeline-runner:
+    security_opt: [label=disable]
+  serving-manager:
+    security_opt: [label=disable]

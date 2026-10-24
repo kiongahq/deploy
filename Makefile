@@ -3,7 +3,7 @@
         ide-up ide-agents-up ide-down public-up public-down kind-up k8s-tools test-e2e-kind \
         test-load test-stress smoke
 
-COMPOSE := docker compose -f compose.yaml
+COMPOSE := bash scripts/container.sh compose -f compose.yaml
 
 workspace:                 ## clone every component beside this repo
 	bash scripts/workspace.sh

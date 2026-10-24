@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT/compose.yaml"
+ENGINE=(bash "$ROOT/scripts/container.sh")
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
 REBUILD="${KIONGA_REBUILD:-0}"
@@ -25,7 +26,7 @@ trap 'printf "\nKionga startup cancelled. Re-run make local-up to resume cached 
 trap 'printf "\nKionga startup terminated. Re-run make local-up to resume cached layers.\n" >&2; exit 143' TERM
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
+  "${ENGINE[@]}" compose -f "$COMPOSE_FILE" "$@"
 }
 
 fail() {
@@ -157,7 +158,7 @@ pull_missing_upstream_images() {
   local -a missing=()
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
-    docker image inspect "$image" >/dev/null 2>&1 || missing+=("$image")
+    "${ENGINE[@]}" image inspect "$image" >/dev/null 2>&1 || missing+=("$image")
   done < <(compose config --format json | python3 "$ROOT/scripts/build_inputs.py" registry-images)
 
   if ((${#missing[@]} == 0)); then
@@ -166,7 +167,7 @@ pull_missing_upstream_images() {
   fi
   for image in "${missing[@]}"; do
     printf '  pulling: %s\n' "$image"
-    if ! output="$(docker pull -q "$image" 2>&1)"; then
+    if ! output="$("${ENGINE[@]}" pull -q "$image" 2>&1)"; then
       printf '%s\n' "$output" >&2
       if [[ "$output" =~ (pull\ access\ denied|repository\ does\ not\ exist|manifest\ unknown|manifest\ .*not\ found) ]]; then
         return 2
@@ -272,9 +273,8 @@ main() {
   local gateway_port jupyter_port
   require_positive_integer KIONGA_START_RETRIES "$MAX_ATTEMPTS"
   require_positive_integer KIONGA_START_TIMEOUT_SECONDS "$START_TIMEOUT_SECONDS"
-  command -v docker >/dev/null 2>&1 || fail "Docker is required. Install Docker Desktop or Docker Engine with Compose v2."
-  docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (the 'docker compose' command was not found)."
-  docker info >/dev/null 2>&1 || fail "Docker is installed but its daemon is not running. Start Docker and run 'make local-up' again."
+  "${ENGINE[@]}" compose version >/dev/null 2>&1 || fail "A container engine and Compose provider are required."
+  "${ENGINE[@]}" info >/dev/null 2>&1 || fail "The selected container engine is not running. Start Docker or the Podman machine and retry."
   warn_low_disk_space
   choose_ports
 

@@ -422,7 +422,7 @@ services:
     # bounded PID limit, and are removed after every attempt.
     user: "0:0"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     restart: unless-stopped
 
   serving-manager:
@@ -433,7 +433,7 @@ services:
     # requires it. The pipeline-runner is the only other socket consumer.
     user: "0:0"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     environment:
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       SERVE_IMAGE: mlaiops-mlflow

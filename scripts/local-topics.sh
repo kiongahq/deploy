@@ -21,14 +21,14 @@ topics=(
   mlaiops.recs.results
 )
 
-existing="$(docker compose -f "$ROOT/compose.yaml" exec -T kafka \
+existing="$(bash "$ROOT/scripts/container.sh" compose -f "$ROOT/compose.yaml" exec -T kafka \
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" --list)"
 
 for topic in "${topics[@]}"; do
   if printf '%s\n' "$existing" | grep -Fqx "$topic"; then
     continue
   fi
-  output="$(docker compose -f "$ROOT/compose.yaml" exec -T kafka \
+  output="$(bash "$ROOT/scripts/container.sh" compose -f "$ROOT/compose.yaml" exec -T kafka \
     /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BROKER" \
     --create --if-not-exists --topic "$topic" --partitions 3 --replication-factor 1 2>&1)" || {
       printf '%s\n' "$output" >&2
