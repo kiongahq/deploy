@@ -82,6 +82,7 @@ spec:
             - {name: IDE_IMAGE, value: {{ $.Values.images.ide | quote }}}
             - {name: LANGFLOW_IMAGE, value: {{ $.Values.images.langflow | quote }}}
             - {name: LANGFLOW_SIDECAR_IMAGE, value: {{ index $.Values.images "langflow-sidecar" | quote }}}
+            - {name: KIONGA_LANGFLOW_AGENT_IMAGE, value: {{ index $.Values.images "langflow-agent-runtime" | quote }}}
             {{- if and (eq $name "operator") $.Values.imagePullSecrets }}
             {{- $pullSecrets := list }}
             {{- range $.Values.imagePullSecrets }}{{ $pullSecrets = append $pullSecrets .name }}{{ end }}

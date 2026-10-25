@@ -17,6 +17,7 @@ images:
   ide: ""
   langflow: ""
   langflow-sidecar: ""
+  langflow-agent-runtime: ""
 config:
   KIONGA_ENVIRONMENT: production
   OIDC_ISSUER: ""

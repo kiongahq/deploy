@@ -38,6 +38,9 @@ spec:
                 version: {type: string, minLength: 1}
                 image: {type: string, minLength: 1}
                 graphModule: {type: string, minLength: 1}
+                flowJSON: {type: string, maxLength: 524288}
+                projectID: {type: string}
+                ownerSubject: {type: string}
                 replicas:
                   type: object
                   required: [min, max]
