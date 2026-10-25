@@ -10,6 +10,7 @@ images:
   ide: ghcr.io/kiongahq/ide@sha256:REPLACE
   langflow: ghcr.io/kiongahq/langflow@sha256:REPLACE
   langflow-sidecar: ghcr.io/kiongahq/langflow-sidecar@sha256:REPLACE
+  langflow-agent-runtime: ghcr.io/kiongahq/langflow-agent-runtime@sha256:REPLACE
 storageClass: encrypted-expandable
 ingress:
   className: your-ingress-class
