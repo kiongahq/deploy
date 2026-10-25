@@ -48,6 +48,33 @@ kubectl wait --for=jsonpath='{.status.phase}'=Suspended kiongaworkspace/$name -n
 kubectl wait --for=jsonpath='{.spec.replicas}'=0 deployment/$name -n "$namespace" --timeout=90s
 test "$(kubectl get pvc "$name" -n "$namespace" -o jsonpath='{.metadata.uid}')" = "$pvc_uid"
 
+mount_pvc() {
+  local pod_name="$1"
+  cat <<YAML | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $pod_name
+  namespace: $namespace
+spec:
+  restartPolicy: Never
+  containers:
+    - name: storage-check
+      image: busybox:1.37
+      command: [sh, -c, 'sleep 3600']
+      volumeMounts:
+        - {name: workspace, mountPath: /workspace}
+  volumes:
+    - name: workspace
+      persistentVolumeClaim: {claimName: $name}
+YAML
+  kubectl wait --for=condition=Ready "pod/$pod_name" -n "$namespace" --timeout=120s
+}
+
+mount_pvc langflow-storage-write
+kubectl exec -n "$namespace" langflow-storage-write -- sh -c 'printf persistent-flow > /workspace/flow-marker'
+kubectl delete pod langflow-storage-write -n "$namespace" --wait=true
+
 kubectl patch kiongaworkspace "$name" -n "$namespace" --type=merge -p '{"spec":{"disabled":false}}'
 kubectl wait --for=jsonpath='{.spec.replicas}'=1 deployment/$name -n "$namespace" --timeout=90s
 restart_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -59,4 +86,9 @@ for attempt in $(seq 1 30); do
 done
 test "$observed" = "$restart_at"
 test "$(kubectl get pvc "$name" -n "$namespace" -o jsonpath='{.metadata.uid}')" = "$pvc_uid"
-echo "Langflow workspace reconciled, suspended, resumed and restarted with its original PVC"
+kubectl patch kiongaworkspace "$name" -n "$namespace" --type=merge -p '{"spec":{"disabled":true}}'
+kubectl wait --for=jsonpath='{.spec.replicas}'=0 deployment/$name -n "$namespace" --timeout=90s
+mount_pvc langflow-storage-read
+test "$(kubectl exec -n "$namespace" langflow-storage-read -- cat /workspace/flow-marker)" = persistent-flow
+kubectl delete pod langflow-storage-read -n "$namespace" --wait=true
+echo "Langflow workspace reconciled, suspended, resumed and restarted; its PVC retained file data"
