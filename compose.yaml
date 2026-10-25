@@ -242,6 +242,9 @@ services:
       KIONGA_CREDENTIAL_KEY: ${KIONGA_CREDENTIAL_KEY:-}
       KIONGA_IDE_UPSTREAM: http://ide:8080
       KIONGA_LANGFLOW_UPSTREAM: http://langflow:7860
+      # Optional knowledge backends. Register each base with an env: reference.
+      KIONGA_QDRANT_KEY: ${KIONGA_QDRANT_KEY:-}
+      KIONGA_KNOWLEDGE_DSN: ${KIONGA_KNOWLEDGE_DSN:-}
       KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
       # Shared with jupyter and ide: authorizes structured scaffold jobs.
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
