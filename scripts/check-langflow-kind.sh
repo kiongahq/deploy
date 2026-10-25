@@ -91,4 +91,37 @@ kubectl wait --for=jsonpath='{.spec.replicas}'=0 deployment/$name -n "$namespace
 mount_pvc langflow-storage-read
 test "$(kubectl exec -n "$namespace" langflow-storage-read -- cat /workspace/flow-marker)" = persistent-flow
 kubectl delete pod langflow-storage-read -n "$namespace" --wait=true
-echo "Langflow workspace reconciled, suspended, resumed and restarted; its PVC retained file data"
+
+cat <<YAML | kubectl apply -f -
+apiVersion: mlaiops.io/v1alpha1
+kind: KiongaAgent
+metadata:
+  name: langflow-published-smoke
+  namespace: $namespace
+spec:
+  version: r1
+  image: registry.k8s.io/pause:3.9
+  graphModule: agents.langflow_adapter:build_langflow
+  flowJSON: '{"data":{"nodes":[{"id":"input"}],"edges":[]}}'
+  projectID: smoke-project
+  ownerSubject: smoke-user
+  replicas: {min: 1, max: 2}
+  llm: {backend: mock}
+YAML
+kubectl wait --for=jsonpath='{.status.workloadRef}' kiongaagent/langflow-published-smoke \
+  -n "$namespace" --timeout=90s
+agent_workload="$(kubectl get kiongaagent langflow-published-smoke -n "$namespace" -o jsonpath='{.status.workloadRef}')"
+agent_deployment="$(kubectl get deployment "$agent_workload" -n "$namespace" -o json)"
+flow_config="$(python3 -c 'import json,sys
+d=json.load(sys.stdin)
+pod=d["spec"]["template"]["spec"]
+assert {c["name"] for c in pod["containers"]} == {"agent", "trace-proxy", "kionga-api"}
+assert any(m["mountPath"] == "/app/flows" for m in pod["containers"][0]["volumeMounts"])
+print(pod["volumes"][0]["configMap"]["name"])
+' <<<"$agent_deployment")"
+test "$(kubectl get configmap "$flow_config" -n "$namespace" -o jsonpath='{.data.flow\.json}')" = \
+  '{"data":{"nodes":[{"id":"input"}],"edges":[]}}'
+kubectl get service "$agent_workload" -n "$namespace" >/dev/null
+kubectl get horizontalpodautoscaler "$agent_workload" -n "$namespace" >/dev/null
+test "$(kubectl get deployment "$name" -n "$namespace" -o jsonpath='{.spec.replicas}')" = 0
+echo "Langflow workspace retained file data; a published agent reconciled while its editor was stopped"
