@@ -7,7 +7,7 @@ ENGINE=(bash "$ROOT/scripts/container.sh")
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
 REBUILD="${KIONGA_REBUILD:-0}"
-BUILD_MODE="${KIONGA_BUILD_MODE:-auto}"
+BUILD_MODE="${KIONGA_BUILD_MODE:-never}"
 
 # Compose discovers .env from the working directory. Running from the repository
 # root keeps direct script usage identical to `make local-up`.
@@ -310,12 +310,17 @@ main() {
       }
   fi
 
-  local start_description="Build missing images and start the platform"
-  [[ "$BUILD_MODE" == never ]] && start_description="Start cached images"
-  retry "$start_description" start_platform || {
+  if [[ "$BUILD_MODE" == never ]]; then
+    start_platform || {
       diagnostics
-    fail "$start_description failed after $MAX_ATTEMPTS attempts."
+      fail "a required image is not cached or the stack could not start. 'make local-up' never downloads or builds; use 'make local-build-up' when you have enough disk space, or deploy to a remote Kubernetes cluster."
     }
+  else
+    retry "Build missing images and start the platform" start_platform || {
+      diagnostics
+      fail "container builds or platform startup failed after $MAX_ATTEMPTS attempts."
+    }
+  fi
 
   gateway_port="$(published_port gateway 8080 "$GATEWAY_PORT")"
   if ! wait_for_gateway "$gateway_port"; then

@@ -25,9 +25,9 @@ def test_container_build_refuses_low_host_disk():
     assert "require at least 15 GiB free" in result.stderr
 
 
-def test_cached_start_invokes_compose_without_build_or_pull():
+def test_default_start_invokes_compose_without_build_or_pull():
     result = run_harness(
-        "BUILD_MODE=never; compose() { printf '%s\\n' \"$*\"; }; start_platform"
+        "compose() { printf '%s\\n' \"$*\"; }; start_platform"
     )
     assert result.returncode == 0, result.stderr
     assert "up --detach --pull never --remove-orphans --no-build" in result.stdout

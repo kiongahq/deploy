@@ -1,5 +1,5 @@
 # Run Kionga: the local stack from sibling checkouts, a single VM, or Kubernetes.
-.PHONY: workspace workspace-pull test local local-up local-start local-rebuild local-down local-status local-logs \
+.PHONY: workspace workspace-pull test local local-up local-start local-build-up local-rebuild local-down local-status local-logs \
         ide-up ide-agents-up ide-down langflow-up langflow-down public-up public-down kind-up k8s-tools test-e2e-kind \
         test-load test-stress smoke
 
@@ -16,14 +16,16 @@ test:                      ## deploy gate tests (compose wiring, Helm chart, VM 
 
 local: local-up
 
-local-up:                  ## build stale images from the checkouts and start the stack
+local-up:                  ## start cached images without downloading or building
 	bash scripts/local-up.sh
 
-local-start:               ## start already cached images without downloading or building
-	KIONGA_BUILD_MODE=never bash scripts/local-up.sh
+local-start: local-up       ## alias for cached-only startup
+
+local-build-up:            ## build stale images inside Docker/Podman, then start
+	KIONGA_BUILD_MODE=auto bash scripts/local-up.sh
 
 local-rebuild:
-	KIONGA_REBUILD=1 bash scripts/local-up.sh
+	KIONGA_BUILD_MODE=auto KIONGA_REBUILD=1 bash scripts/local-up.sh
 
 local-down:
 	$(COMPOSE) down

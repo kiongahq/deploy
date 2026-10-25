@@ -29,7 +29,8 @@ make -C deploy workspace      # clones the component repositories beside deploy
 
 ```bash
 cd deploy
-make local-up                 # builds what changed and starts the stack
+make local-up                 # starts cached images without downloads or builds
+make local-build-up           # explicitly build changed images, then start
 ```
 
 Open <http://localhost:8080> and sign in with `admin` / `mlaiops-local`. Other
