@@ -7,6 +7,7 @@ ENGINE=(bash "$ROOT/scripts/container.sh")
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
 REBUILD="${KIONGA_REBUILD:-0}"
+BUILD_MODE="${KIONGA_BUILD_MODE:-auto}"
 
 # Compose discovers .env from the working directory. Running from the repository
 # root keeps direct script usage identical to `make local-up`.
@@ -47,6 +48,18 @@ warn_low_disk_space() {
   if ((available_kib < minimum_kib)); then
     printf 'Warning: only about %d GiB is free on the host. A completely cold Kionga build recommends 25-35 GiB; cached starts need much less.\n' \
       "$((available_kib / 1024 / 1024))" >&2
+  fi
+}
+
+require_free_space() {
+  local purpose="$1" minimum_gb="$2" override="$3" available_kib
+  [[ "$minimum_gb" =~ ^[0-9]+$ ]] || fail "$override must be a non-negative integer"
+  ((minimum_gb > 0)) || return 0
+  command -v df >/dev/null 2>&1 || return 0
+  available_kib="$(df -Pk "$ROOT" 2>/dev/null | awk 'NR == 2 {print $4}')"
+  [[ "$available_kib" =~ ^[0-9]+$ ]] || return 0
+  if ((available_kib < minimum_gb * 1024 * 1024)); then
+    fail "$purpose require at least ${minimum_gb} GiB free on the host; about $((available_kib / 1024 / 1024)) GiB remains. Podman/Docker image layers live in a VM or container store backed by this disk. Free space, use 'make local-start' for already cached images, or set $override=0 to override."
   fi
 }
 
@@ -165,6 +178,7 @@ pull_missing_upstream_images() {
     printf 'All upstream images are cached; skipping registry checks.\n'
     return 0
   fi
+  require_free_space "Image downloads" "${KIONGA_MIN_PULL_FREE_GB:-5}" KIONGA_MIN_PULL_FREE_GB
   for image in "${missing[@]}"; do
     printf '  pulling: %s\n' "$image"
     if ! output="$("${ENGINE[@]}" pull -q "$image" 2>&1)"; then
@@ -183,8 +197,14 @@ BUILD_STATE="$ROOT/.local-state/build-inputs.json"
 start_platform() {
   local -a args=(up --detach --pull never --remove-orphans)
   local stale=""
+  if [[ "$BUILD_MODE" == never ]]; then
+    printf 'Starting only cached images; no image downloads or builds.\n'
+    compose "${args[@]}" --no-build
+    return
+  fi
   case "$REBUILD" in
     1|true|TRUE|yes|YES)
+      require_free_space "Container builds" "${KIONGA_MIN_BUILD_FREE_GB:-15}" KIONGA_MIN_BUILD_FREE_GB
       check_build_context || return 1
       compose build || return 1
       record_build_inputs || return 1
@@ -195,6 +215,7 @@ start_platform() {
       stale="$(stale_services)" || return 1
       if [[ -n "$stale" ]]; then
         printf 'Rebuilding images whose sources changed: %s\n' "$stale"
+        require_free_space "Container builds" "${KIONGA_MIN_BUILD_FREE_GB:-15}" KIONGA_MIN_BUILD_FREE_GB
         check_build_context || return 1
         # shellcheck disable=SC2086
         compose build $stale || return 1
@@ -273,21 +294,27 @@ main() {
   local gateway_port jupyter_port
   require_positive_integer KIONGA_START_RETRIES "$MAX_ATTEMPTS"
   require_positive_integer KIONGA_START_TIMEOUT_SECONDS "$START_TIMEOUT_SECONDS"
+  [[ "$BUILD_MODE" == auto || "$BUILD_MODE" == never ]] || fail "KIONGA_BUILD_MODE must be auto or never"
   "${ENGINE[@]}" compose version >/dev/null 2>&1 || fail "A container engine and Compose provider are required."
   "${ENGINE[@]}" info >/dev/null 2>&1 || fail "The selected container engine is not running. Start Docker or the Podman machine and retry."
   warn_low_disk_space
   choose_ports
 
-  printf 'Starting Kionga with at most %s concurrent image downloads.\n' "$COMPOSE_PARALLEL_LIMIT"
-  retry "Download missing upstream images" \
-    pull_missing_upstream_images || {
-      diagnostics
-      fail "image downloads still failed after $MAX_ATTEMPTS attempts. Re-run 'make local-up'; Docker keeps completed layers."
-    }
+  if [[ "$BUILD_MODE" == auto ]]; then
+    printf 'Starting Kionga with at most %s concurrent image downloads.\n' "$COMPOSE_PARALLEL_LIMIT"
+    printf 'Image downloads and Dockerfile RUN commands execute in the selected container engine; this terminal only shows their output. Image layers still use host-backed disk.\n'
+    retry "Download missing upstream images" \
+      pull_missing_upstream_images || {
+        diagnostics
+        fail "image downloads still failed after $MAX_ATTEMPTS attempts. Re-run 'make local-up'; completed layers remain cached."
+      }
+  fi
 
-  retry "Build missing images and start the platform" start_platform || {
+  local start_description="Build missing images and start the platform"
+  [[ "$BUILD_MODE" == never ]] && start_description="Start cached images"
+  retry "$start_description" start_platform || {
       diagnostics
-    fail "the platform could not be built and started after $MAX_ATTEMPTS attempts."
+    fail "$start_description failed after $MAX_ATTEMPTS attempts."
     }
 
   gateway_port="$(published_port gateway 8080 "$GATEWAY_PORT")"
