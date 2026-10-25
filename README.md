@@ -37,6 +37,11 @@ targets: `make local-status`, `make local-logs`, `make local-down`, `make ide-up
 (browser IDE), `make workspace-pull` (update clean checkouts) and `make smoke`
 (end-to-end check against the running stack).
 
+Langflow is an optional agent canvas. Start it with `make langflow-up` and stop
+it with `make langflow-down`, using the same Docker or Podman engine as the
+rest of Kionga. Open **Agents → Langflow** in the console. The `langflow-data`
+volume keeps local flows across restarts.
+
 ### Operating systems and engine choice
 
 Docker is the default: use Docker Engine with Compose on Linux, or Docker Desktop

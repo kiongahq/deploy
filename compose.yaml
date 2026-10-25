@@ -241,6 +241,7 @@ services:
       KIONGA_JUPYTER_UPSTREAM: http://jupyter:8888
       KIONGA_CREDENTIAL_KEY: ${KIONGA_CREDENTIAL_KEY:-}
       KIONGA_IDE_UPSTREAM: http://ide:8080
+      KIONGA_LANGFLOW_UPSTREAM: http://langflow:7860
       KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlaiops-local}
       # Shared with jupyter and ide: authorizes structured scaffold jobs.
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
@@ -623,6 +624,39 @@ services:
       - workspace-codex:/home/coder/.codex
       - workspace-claude:/home/coder/.claude
 
+  langflow:
+    build:
+      context: ${KIONGA_SRC:-..}/workspace
+      dockerfile: langflow/Dockerfile
+    restart: unless-stopped
+    profiles: [langflow]
+    environment:
+      LANGFLOW_ROOT_PATH: /workspaces/langflow
+      LANGFLOW_CONFIG_DIR: /app/langflow
+      LANGFLOW_SAVE_DB_IN_CONFIG_DIR: "true"
+      LANGFLOW_AUTO_LOGIN: "true"
+      LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS: "true"
+      LANGFLOW_COMPONENTS_PATH: /app/kionga-components
+      LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:-kionga-local-langflow-change-me}
+      LANGFLOW_SECRET_KEY: ${LANGFLOW_SECRET_KEY:-kionga-local-langflow-secret-change-me}
+    expose: ["7860"]
+    volumes:
+      - langflow-data:/app/langflow
+
+  langflow-sidecar:
+    build:
+      context: ${KIONGA_SRC:-..}/workspace
+      dockerfile: langflow/Dockerfile.sidecar
+    restart: unless-stopped
+    profiles: [langflow]
+    network_mode: service:langflow
+    depends_on:
+      langflow: {condition: service_started}
+    environment:
+      KIONGA_WORKSPACE_NAME: local
+      KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
+      KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
+
 volumes:
   sso-providers:
   postgres-data:
@@ -632,3 +666,4 @@ volumes:
   jupyter-data:
   workspace-codex:
   workspace-claude:
+  langflow-data:

@@ -80,6 +80,8 @@ spec:
             - {name: TRACE_PROXY_IMAGE, value: {{ index $.Values.images "trace-proxy" | quote }}}
             - {name: WORKBENCH_IMAGE, value: {{ $.Values.images.jupyter | quote }}}
             - {name: IDE_IMAGE, value: {{ $.Values.images.ide | quote }}}
+            - {name: LANGFLOW_IMAGE, value: {{ $.Values.images.langflow | quote }}}
+            - {name: LANGFLOW_SIDECAR_IMAGE, value: {{ index $.Values.images "langflow-sidecar" | quote }}}
             {{- if and (eq $name "operator") $.Values.imagePullSecrets }}
             {{- $pullSecrets := list }}
             {{- range $.Values.imagePullSecrets }}{{ $pullSecrets = append $pullSecrets .name }}{{ end }}

@@ -1,6 +1,6 @@
 # Run Kionga: the local stack from sibling checkouts, a single VM, or Kubernetes.
 .PHONY: workspace workspace-pull test local local-up local-rebuild local-down local-status local-logs \
-        ide-up ide-agents-up ide-down public-up public-down kind-up k8s-tools test-e2e-kind \
+        ide-up ide-agents-up ide-down langflow-up langflow-down public-up public-down kind-up k8s-tools test-e2e-kind \
         test-load test-stress smoke
 
 COMPOSE := bash scripts/container.sh compose -f compose.yaml
@@ -39,6 +39,12 @@ ide-agents-up:
 
 ide-down:
 	$(COMPOSE) --profile ide stop ide
+
+langflow-up:                ## start the optional Langflow canvas and scoped API helper
+	$(COMPOSE) --profile langflow up -d --build gateway langflow langflow-sidecar
+
+langflow-down:              ## stop Langflow but keep its flow data volume
+	$(COMPOSE) --profile langflow stop langflow-sidecar langflow
 
 sso-reload:                ## re-render Dex after changing KIONGA_*_CLIENT_ID/SECRET in .env (the login page follows)
 	$(COMPOSE) up -d --force-recreate --wait dex

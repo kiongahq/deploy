@@ -15,6 +15,8 @@ images:
   trace-proxy: ""
   jupyter: ""
   ide: ""
+  langflow: ""
+  langflow-sidecar: ""
 config:
   KIONGA_ENVIRONMENT: production
   OIDC_ISSUER: ""
