@@ -13,6 +13,40 @@ permissions:
   contents: read
 
 jobs:
+  langflow-kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone platform operator
+        run: git clone --depth=1 https://github.com/kiongahq/platform.git ../platform
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ../platform/go/go.mod
+          cache-dependency-path: ../platform/go/go.sum
+      - uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: kionga-smoke
+      - name: Build operator
+        run: go build -o "$RUNNER_TEMP/kionga-operator" ./cmd/operator
+        working-directory: ../platform/go
+      - name: Prepare operator namespaces and CRDs
+        run: |
+          kubectl create namespace kionga-system
+          kubectl create namespace kionga-workloads
+          kubectl apply -f config/crd/
+          kubectl wait --for=condition=Established crd/kiongaworkspaces.mlaiops.io --timeout=90s
+      - name: Reconcile Langflow workspace
+        run: |
+          MLAIOPS_TARGET_NAMESPACE=kionga-workloads \
+          MLAIOPS_CONTROL_NAMESPACE=kionga-system \
+          LANGFLOW_IMAGE=registry.k8s.io/pause:3.9 \
+          LANGFLOW_SIDECAR_IMAGE=registry.k8s.io/pause:3.9 \
+          "$RUNNER_TEMP/kionga-operator" --leader-elect=false --metrics-bind-address=127.0.0.1:18080 --health-probe-bind-address=127.0.0.1:18082 >"$RUNNER_TEMP/kionga-operator.log" 2>&1 &
+          operator_pid=$!
+          trap 'kill "$operator_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/kionga-operator.log"' EXIT
+          bash scripts/check-langflow-kind.sh
+
   deploy:
     runs-on: ubuntu-latest
     env:
