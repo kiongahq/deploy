@@ -67,6 +67,9 @@ rules:
     resources: [pods]
     verbs: [get, list]
   - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
     resources: [secrets]
     verbs: [get]
 ---
