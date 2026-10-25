@@ -28,7 +28,6 @@ spec:
                 projectID: {type: string}
                 services:
                   type: array
-                  uniqueItems: true
                   items: {type: string}
                 disabled: {type: boolean, default: false}
                 storageGB: {type: integer, format: int32, minimum: 1}
