@@ -251,6 +251,11 @@ services:
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-kionga-local-workspace-jobs}
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
+      # Native Agent Designer playground and evaluations run in the isolated
+      # runner; it calls back on the internal listener with a run credential.
+      KIONGA_AGENT_DESIGNER_RUNNER_URL: http://agent-designer-runner:9100
+      KIONGA_AGENT_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:-kionga-local-designer-runner-token}
+      KIONGA_AGENT_DESIGNER_CALLBACK_URL: http://gateway:8087/api/v1
       STORAGE_PROXY_URL: http://storage-proxy:8084
       PREFECT_API_URL: http://prefect-server:4200/api
       SERVING_MANAGER_URL: http://serving-manager:8085
@@ -540,6 +545,40 @@ services:
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
     # host 19000: the object store owns host port 9000
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${AGENT_RUNTIME_PORT:-19000}:9000"]
+
+  # Executes Agent Designer drafts as declarative graphs (no user code). It has
+  # no published port, no provider keys beyond the platform chat model, and
+  # reaches Kionga resources only through the gateway's internal listener.
+  agent-designer-runner:
+    restart: unless-stopped
+    image: mlaiops-agent-runtime
+    pull_policy: never   # same image as agent-runtime, built by that service
+    entrypoint: ["python", "-m", "agent_runtime.designer"]
+    depends_on:
+      agent-runtime: {condition: service_started}
+      trace-proxy: {condition: service_started}
+    environment:
+      KIONGA_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:-kionga-local-designer-runner-token}
+      KIONGA_DESIGNER_MAX_RUNS: ${KIONGA_DESIGNER_MAX_RUNS:-8}
+      MLAIOPS_LLM_BACKEND: ${MLAIOPS_LLM_BACKEND:-mock}
+      MLAIOPS_LLM_MODEL: ${MLAIOPS_LLM_MODEL:-}
+      MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MLAIOPS_COST_PER_1K_INPUT: ${MLAIOPS_COST_PER_1K_INPUT:-0}
+      MLAIOPS_COST_PER_1K_OUTPUT: ${MLAIOPS_COST_PER_1K_OUTPUT:-0}
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   jupyter:
     restart: unless-stopped
