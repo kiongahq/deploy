@@ -18,6 +18,9 @@ images:
   langflow: ""
   langflow-sidecar: ""
   langflow-agent-runtime: ""
+  # agent-runtime: runs deployed native Agent Designer versions and the
+  # designer runner.
+  agent-runtime: ""
 config:
   KIONGA_ENVIRONMENT: production
   OIDC_ISSUER: ""
@@ -113,6 +116,22 @@ gatewayAutoscaling:
   minReplicas: 3
   maxReplicas: 10
   cpuPercent: 70
+# Native Agent Designer playground and evaluation runner. Off by default. To
+# enable it, create the Secret named by secretName with key
+# KIONGA_DESIGNER_RUNNER_TOKEN (32+ random characters, or through
+# externalSecrets.targets); the gateway and the runner both mount it. Model
+# calls go through the release's trace-proxy.
+agentDesigner:
+  enabled: false
+  replicas: 2
+  maxRuns: 8
+  secretName: kionga-agent-designer
+  llm:
+    backend: openai-compatible
+    model: ""
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 1Gi}
 networkPolicy:
   enabled: true
   # Explicit destination CIDRs/ports for DB, IdP, Kafka REST, engines, object

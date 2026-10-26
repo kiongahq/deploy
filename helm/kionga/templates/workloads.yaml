@@ -83,6 +83,14 @@ spec:
             - {name: LANGFLOW_IMAGE, value: {{ $.Values.images.langflow | quote }}}
             - {name: LANGFLOW_SIDECAR_IMAGE, value: {{ index $.Values.images "langflow-sidecar" | quote }}}
             - {name: KIONGA_LANGFLOW_AGENT_IMAGE, value: {{ index $.Values.images "langflow-agent-runtime" | quote }}}
+            {{- if eq $name "gateway" }}
+            - {name: KIONGA_NATIVE_AGENT_IMAGE, value: {{ index $.Values.images "agent-runtime" | quote }}}
+            {{- if $.Values.agentDesigner.enabled }}
+            - {name: KIONGA_AGENT_DESIGNER_RUNNER_URL, value: "http://{{ $.Release.Name }}-agent-designer-runner.{{ $.Release.Namespace }}.svc:9100"}
+            - {name: KIONGA_AGENT_DESIGNER_CALLBACK_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8087/api/v1"}
+            - {name: KIONGA_AGENT_DESIGNER_RUNNER_TOKEN_FILE, value: /run/designer/KIONGA_DESIGNER_RUNNER_TOKEN}
+            {{- end }}
+            {{- end }}
             {{- if and (eq $name "operator") $.Values.imagePullSecrets }}
             {{- $pullSecrets := list }}
             {{- range $.Values.imagePullSecrets }}{{ $pullSecrets = append $pullSecrets .name }}{{ end }}
@@ -123,11 +131,21 @@ spec:
             {{- if $component.secrets }}
             - {name: secrets, mountPath: /run/secrets, readOnly: true}
             {{- end }}
+            {{- if and (eq $name "gateway") $.Values.agentDesigner.enabled }}
+            - {name: designer-token, mountPath: /run/designer, readOnly: true}
+            {{- end }}
       volumes:
         - name: config
           configMap: {name: {{ $.Release.Name }}-config}
         - name: tmp
           emptyDir: {sizeLimit: 128Mi}
+        {{- if and (eq $name "gateway") $.Values.agentDesigner.enabled }}
+        - name: designer-token
+          secret:
+            secretName: {{ $.Values.agentDesigner.secretName }}
+            defaultMode: 0440
+            items: [{key: KIONGA_DESIGNER_RUNNER_TOKEN, path: KIONGA_DESIGNER_RUNNER_TOKEN}]
+        {{- end }}
         {{- if $component.secrets }}
         - name: secrets
           secret:

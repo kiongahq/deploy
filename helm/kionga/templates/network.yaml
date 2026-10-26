@@ -15,6 +15,13 @@ spec:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: {{ .Values.workspaceNamespace }}}
       ports: [{port: 8080}, {port: 8081}, {port: 8083}, {port: 8084}, {port: 8087}]
+    {{- if .Values.agentDesigner.enabled }}
+    # Runner callbacks (gateway internal listener) and model calls (trace-proxy).
+    - from:
+        - podSelector:
+            matchLabels: {kionga.dev/release: {{ .Release.Name }}, app.kubernetes.io/component: agent-designer-runner}
+      ports: [{port: 8087}, {port: 8081}]
+    {{- end }}
   egress:
     - to:
         - namespaceSelector:
@@ -25,6 +32,12 @@ spec:
             matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}}
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: {{ .Values.workspaceNamespace }}}
+    {{- if .Values.agentDesigner.enabled }}
+    - to:
+        - podSelector:
+            matchLabels: {kionga.dev/release: {{ .Release.Name }}, app.kubernetes.io/component: agent-designer-runner}
+      ports: [{port: 9100}]
+    {{- end }}
     {{- with .Values.networkPolicy.externalEgress }}
 {{ toYaml . | indent 4 }}
     {{- end }}

@@ -1,0 +1,149 @@
+{{- /*
+Agent Designer runner: executes native agent graph drafts for the playground
+and evaluations. Graphs are declarative (no user code). The runner holds no
+provider or resource credentials. It reaches Kionga only through the
+gateway's internal listener (8087), using a run-scoped credential, and models
+only through the trace-proxy. Its pods deliberately lack the release instance
+label, so the broad control-plane NetworkPolicy does not apply to them; the
+policy below is their only allowance.
+*/ -}}
+{{- if .Values.agentDesigner.enabled }}
+{{- $d := .Values.agentDesigner }}
+{{- $labels := dict "kionga.dev/release" .Release.Name "app.kubernetes.io/component" "agent-designer-runner" }}
+{{- if lt (int $d.replicas) 2 }}{{ fail "agentDesigner.replicas must be at least 2" }}{{ end }}
+{{- if not $d.secretName }}{{ fail "agentDesigner.secretName is required" }}{{ end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-agent-designer-runner
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-agent-designer-runner
+  labels: {{ toYaml $labels | nindent 4 }}
+spec:
+  replicas: {{ $d.replicas }}
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 600
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {{ toYaml $labels | nindent 6 }}
+  template:
+    metadata:
+      labels: {{ toYaml $labels | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-agent-designer-runner
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 330   # lets a run finish its 300 s budget
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {{ toYaml $labels | nindent 14 }}
+      containers:
+        - name: runner
+          image: {{ index .Values.images "agent-runtime" | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [python, -m, agent_runtime.designer]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources: {{ toYaml $d.resources | nindent 12 }}
+          env:
+            - {name: KIONGA_DESIGNER_RUNNER_TOKEN_FILE, value: /run/secrets/designer/KIONGA_DESIGNER_RUNNER_TOKEN}
+            - {name: KIONGA_DESIGNER_PORT, value: "9100"}
+            - {name: KIONGA_DESIGNER_MAX_RUNS, value: {{ $d.maxRuns | quote }}}
+            - {name: MLAIOPS_LLM_BACKEND, value: {{ $d.llm.backend | quote }}}
+            - {name: MLAIOPS_LLM_MODEL, value: {{ $d.llm.model | quote }}}
+            - {name: MLAIOPS_LLM_BASE_URL, value: "http://{{ .Release.Name }}-trace-proxy.{{ .Release.Namespace }}.svc:8081/v1"}
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+            - {name: HOME, value: /tmp}
+          ports: [{name: http, containerPort: 9100}]
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 15
+            timeoutSeconds: 3
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: token, mountPath: /run/secrets/designer, readOnly: true}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+        - name: token
+          secret:
+            secretName: {{ $d.secretName }}
+            defaultMode: 0440
+            items: [{key: KIONGA_DESIGNER_RUNNER_TOKEN, path: KIONGA_DESIGNER_RUNNER_TOKEN}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-agent-designer-runner
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{ toYaml $labels | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-agent-designer-runner
+  labels: {{ toYaml $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{ toYaml $labels | nindent 4 }}
+  ports: [{name: http, port: 9100, targetPort: http}]
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-agent-designer-runner
+spec:
+  podSelector:
+    matchLabels: {{ toYaml $labels | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: gateway}
+      ports: [{port: 9100}]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: gateway}
+      ports: [{port: 8087}]
+    - to:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: trace-proxy}
+      ports: [{port: 8081}]
+{{- end }}
+{{- end }}
