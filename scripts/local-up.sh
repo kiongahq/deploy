@@ -295,6 +295,57 @@ retry() {
   done
 }
 
+# Bytes the engine has received for in-flight pulls. Podman stages layers in
+# the machine's /var/tmp while downloading; empty for Docker (its daemon has
+# its own transfer timeouts and cancels when the client disconnects).
+engine_pull_bytes() {
+  [[ "$(selected_engine)" == podman ]] || return 0
+  podman machine ssh -- 'sudo du -sb /var/tmp/container_images_storage* 2>/dev/null | awk "{s+=\$1} END {print s+0}"' 2>/dev/null | tr -dc '0-9'
+}
+
+# A registry connection can stop delivering bytes without erroring; the pull
+# then waits forever. Watch the staged bytes and give up on a pull that has
+# not grown for KIONGA_PULL_STALL_SECONDS (default 180). With Podman the pull
+# runs inside the machine's API service and survives the client being killed,
+# so the service is restarted to drop it (containers and volumes are kept).
+# Layers already stored are reused by the retry.
+PULL_STALLED="" PULL_OUTPUT=""
+pull_with_watchdog() {
+  local image="$1" quiet="${2:-}" limit="${KIONGA_PULL_STALL_SECONDS:-180}" pid last="" now idle=0 log
+  PULL_STALLED="" PULL_OUTPUT=""
+  log="$(mktemp)"
+  if [[ -n "$quiet" ]]; then
+    "${ENGINE[@]}" pull -q "$image" >"$log" 2>&1 &
+  else
+    "${ENGINE[@]}" pull "$image" &
+  fi
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 15
+    kill -0 "$pid" 2>/dev/null || break
+    now="$(engine_pull_bytes)"
+    [[ -n "$now" ]] || continue
+    if [[ "$now" == "$last" ]]; then idle=$((idle + 15)); else idle=0 last="$now"; fi
+    if ((idle >= limit)); then
+      PULL_STALLED=1
+      printf '\n  No data received for %ss; cancelling the stalled pull of %s and retrying.\n' "$limit" "$image" >&2
+      kill "$pid" 2>/dev/null || true
+      # The restart cancels every pull, so the staging files they leave
+      # behind are unused and can go.
+      [[ "$(selected_engine)" == podman ]] && podman machine ssh -- \
+        'sudo systemctl restart podman.service && sudo rm -rf /var/tmp/container_images_storage*' >/dev/null 2>&1 || true
+      wait "$pid" 2>/dev/null || true
+      PULL_OUTPUT="pull stalled"
+      rm -f "$log"
+      return 1
+    fi
+  done
+  if wait "$pid"; then
+    PULL_OUTPUT="$(cat "$log")"; rm -f "$log"; return 0
+  fi
+  PULL_OUTPUT="$(cat "$log")"; rm -f "$log"; return 1
+}
+
 pull_missing_upstream_images() {
   # Registry images only: anything no service builds (a service that reuses
   # another service's local build must not be pulled; see build_inputs.py).
@@ -321,10 +372,13 @@ pull_missing_upstream_images() {
     # to capture the message that tells a permanent error from a transient one.
     output=""
     if [[ -t 1 ]]; then
-      "${ENGINE[@]}" pull "$image" && status_ok=1 || status_ok=0
-      ((status_ok)) || { output="$("${ENGINE[@]}" pull -q "$image" 2>&1)" && status_ok=1 || status_ok=0; }
+      pull_with_watchdog "$image" && status_ok=1 || status_ok=0
+      if ((!status_ok)) && [[ -z "$PULL_STALLED" ]]; then
+        output="$("${ENGINE[@]}" pull -q "$image" 2>&1)" && status_ok=1 || status_ok=0
+      fi
     else
-      output="$("${ENGINE[@]}" pull -q "$image" 2>&1)" && status_ok=1 || status_ok=0
+      pull_with_watchdog "$image" quiet && status_ok=1 || status_ok=0
+      output="$PULL_OUTPUT"
     fi
     if ((status_ok)); then
       printf '  [%d/%d] done in %ds\n' "$index" "${#missing[@]}" $((SECONDS - started))

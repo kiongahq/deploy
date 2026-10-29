@@ -114,3 +114,28 @@ def test_missing_images_report_progress_and_classify_failures():
     assert "[2/2] pulling b/two:2" in result.stdout
     assert "rc=2" in result.stdout, "manifest unknown is a permanent failure"
     assert "pull -q a/one:1" in result.stderr, "without a terminal pulls stay quiet"
+
+
+def test_a_stalled_pull_is_cancelled_and_reported():
+    script = (
+        "export KIONGA_ENGINE=podman KIONGA_PULL_STALL_SECONDS=30; sleep() { command sleep 0.01; }"
+        "; engine_pull_bytes() { echo 100; }"  # no growth: a stall
+        "; CALLS=$(mktemp); ENGINE=(fake); fake() { python3 -c \"import time; time.sleep(5)\"; }"
+        "; podman() { echo \"podman $*\" >>\"$CALLS\"; }"
+        "; pull_with_watchdog a/one:1 quiet && echo ok || echo \"failed stalled=$PULL_STALLED\"; cat \"$CALLS\" >&2"
+    )
+    result = run_harness(script)
+    assert "failed stalled=1" in result.stdout, result.stdout + result.stderr
+    assert "No data received for 30s" in result.stderr
+    assert "systemctl restart podman.service" in result.stderr, "the server-side pull must be cancelled"
+
+
+def test_a_growing_pull_is_left_alone():
+    script = (
+        "export KIONGA_ENGINE=podman KIONGA_PULL_STALL_SECONDS=30; sleep() { command sleep 0.01; }"
+        "; C=$(mktemp); engine_pull_bytes() { echo x >>\"$C\"; wc -l <\"$C\" | tr -d ' '; }"  # grows every check
+        "; ENGINE=(fake); fake() { python3 -c \"import time; time.sleep(1)\"; echo pulled; }"
+        "; pull_with_watchdog a/one:1 quiet && echo \"ok $PULL_OUTPUT\""
+    )
+    result = run_harness(script)
+    assert "ok pulled" in result.stdout, result.stdout + result.stderr
