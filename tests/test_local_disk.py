@@ -98,3 +98,19 @@ def test_unreachable_podman_machine_is_restarted():
 def test_engine_recovery_can_be_disabled():
     result = run_harness("export KIONGA_AUTO_RECOVER_ENGINE=0; recover_engine || echo skipped")
     assert result.stdout.strip() == "skipped"
+
+
+def test_missing_images_report_progress_and_classify_failures():
+    script = (
+        "compose() { echo '{}'; }; require_free_space() { :; }"
+        "; python3() { printf 'a/one:1\\nb/two:2\\n'; }"
+        "; CALLS=$(mktemp); ENGINE=(fake); fake() { echo \"$*\" >>\"$CALLS\"; case \"$*\" in"
+        " 'image inspect'*) return 1 ;; *two*) echo 'manifest unknown' >&2; return 1 ;; *) return 0 ;; esac; }"
+        "; pull_missing_upstream_images && rc=0 || rc=$?; echo rc=$rc; cat \"$CALLS\" >&2"
+    )
+    result = run_harness(script)
+    assert "2 upstream image(s) are not cached" in result.stdout
+    assert "[1/2] pulling a/one:1" in result.stdout and "[1/2] done in" in result.stdout
+    assert "[2/2] pulling b/two:2" in result.stdout
+    assert "rc=2" in result.stdout, "manifest unknown is a permanent failure"
+    assert "pull -q a/one:1" in result.stderr, "without a terminal pulls stay quiet"

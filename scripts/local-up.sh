@@ -298,7 +298,7 @@ retry() {
 pull_missing_upstream_images() {
   # Registry images only: anything no service builds (a service that reuses
   # another service's local build must not be pulled; see build_inputs.py).
-  local image output status=0
+  local image output status=0 status_ok
   local -a missing=()
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
@@ -310,9 +310,25 @@ pull_missing_upstream_images() {
     return 0
   fi
   require_free_space "Image downloads" "${KIONGA_MIN_PULL_FREE_GB:-5}" KIONGA_MIN_PULL_FREE_GB
+  printf '%d upstream image(s) are not cached. A first start downloads about 1.5 GB of images and then builds Kionga'"'"'s own; on a slow link this takes a while. Ctrl-C is safe: finished images stay cached and the next run continues.\n' "${#missing[@]}"
+  local index=0 started
   for image in "${missing[@]}"; do
-    printf '  pulling: %s\n' "$image"
-    if ! output="$("${ENGINE[@]}" pull -q "$image" 2>&1)"; then
+    index=$((index + 1))
+    started=$SECONDS
+    printf '\n  [%d/%d] pulling %s\n' "$index" "${#missing[@]}" "$image"
+    # On a terminal the engine draws its own progress bars (it only does so
+    # when attached to the terminal). A failed pull is retried quietly once
+    # to capture the message that tells a permanent error from a transient one.
+    output=""
+    if [[ -t 1 ]]; then
+      "${ENGINE[@]}" pull "$image" && status_ok=1 || status_ok=0
+      ((status_ok)) || { output="$("${ENGINE[@]}" pull -q "$image" 2>&1)" && status_ok=1 || status_ok=0; }
+    else
+      output="$("${ENGINE[@]}" pull -q "$image" 2>&1)" && status_ok=1 || status_ok=0
+    fi
+    if ((status_ok)); then
+      printf '  [%d/%d] done in %ds\n' "$index" "${#missing[@]}" $((SECONDS - started))
+    else
       printf '%s\n' "$output" >&2
       if [[ "$output" =~ (pull\ access\ denied|repository\ does\ not\ exist|manifest\ unknown|manifest\ .*not\ found) ]]; then
         return 2
