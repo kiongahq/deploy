@@ -29,9 +29,24 @@ make -C deploy workspace      # clones the component repositories beside deploy
 
 ```bash
 cd deploy
-make local-up                 # starts cached images without downloads or builds
-make local-build-up           # explicitly build changed images, then start
+make local-up                 # start; pulls and builds only what is missing
+make local-build-up           # also rebuild images whose sources changed
+make local-start              # cached images only: no downloads or builds
 ```
+
+`make local-up` heals the usual local snags on its own:
+
+- **Engine:** if the Podman machine is up but not answering (for example after
+  its port forwarder was killed), it restarts the machine; containers and volumes
+  are kept. On macOS it starts Docker Desktop when it is closed.
+- **Ports:** a busy port from a default or `.env` moves to a free one, and the
+  choice is remembered in `.local-state/ports.env` so URLs stay stable. Only a
+  port set in the shell for that command (`POSTGRES_PORT=… make local-up`) is
+  left as given.
+- **Disk:** builds count the host's free space plus space the Podman machine
+  already holds but does not use. If that is short, it removes dangling
+  (untagged, unused) images; tagged images, containers and volumes are never
+  touched. Set `KIONGA_AUTO_PRUNE=0` or `KIONGA_AUTO_RECOVER_ENGINE=0` to opt out.
 
 Open <http://localhost:8080> and sign in with `admin` / `mlaiops-local`. Other
 targets: `make local-status`, `make local-logs`, `make local-down`, `make ide-up`

@@ -7,7 +7,16 @@ ENGINE=(bash "$ROOT/scripts/container.sh")
 MAX_ATTEMPTS="${KIONGA_START_RETRIES:-4}"
 START_TIMEOUT_SECONDS="${KIONGA_START_TIMEOUT_SECONDS:-240}"
 REBUILD="${KIONGA_REBUILD:-0}"
-BUILD_MODE="${KIONGA_BUILD_MODE:-never}"
+# missing (make local-up): pull and build only what is not cached, never
+# rebuild stale images. auto (make local-build-up): also rebuild images whose
+# sources changed. never (make local-start): cached images only.
+BUILD_MODE="${KIONGA_BUILD_MODE:-missing}"
+PORT_STATE="$ROOT/.local-state/ports.env"
+# Port variables the operator set in the shell for this command. Only these are
+# never moved; ports from .env, defaults and remembered choices may move.
+PINNED_PORTS=" "
+for _var in $(env | sed -n 's/^\([A-Z_]*_PORT\)=.*/\1/p'); do PINNED_PORTS+="$_var "; done
+unset _var
 
 # Compose discovers .env from the working directory. Running from the repository
 # root keeps direct script usage identical to `make local-up`.
@@ -38,17 +47,6 @@ fail() {
 require_positive_integer() {
   local name="$1" value="$2"
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || fail "$name must be a positive integer (received '$value')"
-}
-
-warn_low_disk_space() {
-  local available_kib minimum_kib=$((25 * 1024 * 1024))
-  command -v df >/dev/null 2>&1 || return 0
-  available_kib="$(df -Pk "$ROOT" 2>/dev/null | awk 'NR == 2 {print $4}')"
-  [[ "$available_kib" =~ ^[0-9]+$ ]] || return 0
-  if ((available_kib < minimum_kib)); then
-    printf 'Warning: only about %d GiB is free on the host. A completely cold Kionga build recommends 25-35 GiB; cached starts need much less.\n' \
-      "$((available_kib / 1024 / 1024))" >&2
-  fi
 }
 
 require_free_space() {
@@ -120,23 +118,156 @@ choose_ports() {
     if [[ "$existing" == "$configured" ]] || port_available "$configured"; then
       continue
     fi
-    if [[ -n "${!var+x}" || "$configured" != "$default" ]]; then
-      fail "$service port $configured is in use. Set $var to a free port (in .env or the environment) and run make local-up again."
+    if [[ "$PINNED_PORTS" == *" $var "* ]]; then
+      fail "$service port $configured is in use and $var=$configured was set for this command. Choose a free port, or unset $var to let make local-up pick one."
     fi
-    for offset in 10000 10001 10002 10003 10004; do
-      candidate=$((default + offset))
+    for candidate in $((default + 10000)) $((default + 10001)) $((default + 10002)) $((default + 10003)) $((default + 10004)) \
+        $((configured + 1)) $((configured + 2)) $((configured + 3)) $((configured + 4)) $((configured + 5)); do
       ((candidate <= 65535)) || continue
+      [[ "$candidate" == "$configured" ]] && continue
       [[ "$reserved" == *" $candidate "* ]] && continue
       if [[ "$existing" == "$candidate" ]] || port_available "$candidate"; then
         export "$var=$candidate"
         reserved+="$candidate "
-        printf 'Port %s is in use; %s uses %s instead (%s=%s).\n' "$configured" "$service" "$candidate" "$var" "$candidate"
+        remember_port "$var" "$candidate"
+        printf 'Port %s is in use; %s uses %s instead (%s=%s, remembered in .local-state/ports.env).\n' "$configured" "$service" "$candidate" "$var" "$candidate"
         continue 2
       fi
     done
-    fail "$service ports $configured and $((default + 10000))-$((default + 10004)) are occupied; set $var to a free port."
+    fail "$service port $configured and every fallback are occupied; set $var to a free port."
   done
   GATEWAY_PORT="${GATEWAY_PORT:-8080}"
+}
+
+# Remembered port moves keep URLs stable across restarts. A variable set in
+# the shell for this command wins over the remembered value.
+load_port_choices() {
+  local line var value
+  [[ -f "$PORT_STATE" ]] || return 0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^([A-Z_]+_PORT)=([0-9]+)$ ]] || continue
+    var="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
+    [[ "$PINNED_PORTS" == *" $var "* ]] && continue
+    export "$var=$value"
+  done <"$PORT_STATE"
+}
+
+remember_port() {
+  local var="$1" value="$2" kept=""
+  mkdir -p "$(dirname "$PORT_STATE")"
+  [[ -f "$PORT_STATE" ]] && kept="$(grep -v "^$var=" "$PORT_STATE" || true)"
+  { [[ -n "$kept" ]] && printf '%s\n' "$kept"; printf '%s=%s\n' "$var" "$value"; } >"$PORT_STATE"
+}
+
+# The engine container.sh selects (Docker unless .local-state or KIONGA_ENGINE says Podman).
+selected_engine() {
+  local engine="${KIONGA_ENGINE:-}"
+  [[ -z "$engine" && -f "$ROOT/.local-state/container-engine" ]] && engine="$(cat "$ROOT/.local-state/container-engine")"
+  printf '%s' "${engine:-docker}"
+}
+
+engine_reachable() {
+  "${ENGINE[@]}" info >/dev/null 2>&1
+}
+
+# A Podman machine can keep running while its port forwarder (gvproxy) is
+# dead, e.g. after `kill -9` on a published port: the VM is up, but neither
+# the API nor any published port answers. A stop/start brings the forwarder
+# back; containers and volumes live inside the VM and survive it. A stale
+# socket can make the first start fail, so it is retried once.
+recover_engine() {
+  local engine attempt
+  [[ "${KIONGA_AUTO_RECOVER_ENGINE:-1}" == 0 ]] && return 1
+  engine="$(selected_engine)"
+  case "$engine" in
+    podman)
+      command -v podman >/dev/null 2>&1 || return 1
+      printf 'The Podman machine is not answering; restarting it (containers and volumes are kept)...\n' >&2
+      for attempt in 1 2; do
+        podman machine stop >/dev/null 2>&1 || true
+        if podman machine start >/dev/null 2>&1 && engine_reachable; then
+          printf 'Podman machine restarted.\n' >&2
+          return 0
+        fi
+        sleep 2
+      done
+      ;;
+    docker)
+      [[ "$(uname -s)" == Darwin ]] && command -v open >/dev/null 2>&1 || return 1
+      printf 'Docker is not answering; starting Docker Desktop...\n' >&2
+      open -a Docker >/dev/null 2>&1 || return 1
+      for attempt in $(seq 1 60); do
+        engine_reachable && { printf 'Docker Desktop is ready.\n' >&2; return 0; }
+        sleep 2
+      done
+      ;;
+  esac
+  return 1
+}
+
+ensure_engine() {
+  engine_reachable && "${ENGINE[@]}" compose version >/dev/null 2>&1 && return 0
+  if ! engine_reachable; then
+    recover_engine || fail "the $(selected_engine) engine is not reachable and could not be restarted. Start Docker or run 'podman machine stop && podman machine start', then retry. (Set KIONGA_AUTO_RECOVER_ENGINE=0 to skip the automatic restart.)"
+  fi
+  "${ENGINE[@]}" compose version >/dev/null 2>&1 || fail "A Compose provider is required (Docker Compose v2, or podman compose with docker-compose installed)."
+}
+
+host_free_kib() {
+  df -Pk "$ROOT" 2>/dev/null | awk 'NR == 2 {print $4}'
+}
+
+# Space a Podman machine already holds on the host but does not use: its disk
+# image is sparse, so blocks the VM allocated once and later freed (deleted
+# images) can be reused without growing the file. Builds can use this space
+# on top of the host's free space. 0 when unknown or not Podman.
+engine_slack_kib() {
+  local name image allocated used
+  [[ "$(selected_engine)" == podman ]] || { printf 0; return; }
+  # podman machine inspect does not report the disk image; it lives under the
+  # machine's name in Podman's data directory (applehv, libkrun, qemu...).
+  name="$(podman machine inspect --format '{{.Name}}' 2>/dev/null | head -n 1 || true)"
+  image="$(ls "$HOME"/.local/share/containers/podman/machine/*/"${name:-podman-machine-default}"*.raw 2>/dev/null | head -n 1 || true)"
+  [[ -n "$image" && -f "$image" ]] || { printf 0; return; }
+  allocated="$(du -k "$image" 2>/dev/null | awk '{print $1}')"
+  used="$(podman machine ssh -- df -Pk / 2>/dev/null | awk 'NR == 2 {print $3}')"
+  if [[ "$allocated" =~ ^[0-9]+$ && "$used" =~ ^[0-9]+$ ]] && ((allocated > used)); then
+    printf '%s' $((allocated - used))
+  else
+    printf 0
+  fi
+}
+
+build_space_kib() {
+  local free slack
+  free="$(host_free_kib)"
+  [[ "$free" =~ ^[0-9]+$ ]] || free=0
+  slack="$(engine_slack_kib)"
+  printf '%s' $((free + slack))
+}
+
+# Builds need room. Count the host's free space plus space the engine already
+# holds; if that is short, remove dangling (untagged, unused) images, which
+# never deletes a tagged image, a container or a volume, and check again.
+ensure_build_space() {
+  local minimum_gb="${KIONGA_MIN_BUILD_FREE_GB:-15}" available
+  [[ "$minimum_gb" =~ ^[0-9]+$ ]] || fail "KIONGA_MIN_BUILD_FREE_GB must be a non-negative integer"
+  ((minimum_gb > 0)) || return 0
+  available="$(build_space_kib)"
+  ((available >= minimum_gb * 1024 * 1024)) && return 0
+  if [[ "${KIONGA_AUTO_PRUNE:-1}" != 0 ]]; then
+    printf 'About %d GiB is available for builds (%d GiB needed); removing dangling images to make room...\n' \
+      "$((available / 1024 / 1024))" "$minimum_gb" >&2
+    "${ENGINE[@]}" image prune -f >/dev/null 2>&1 || true
+    available="$(build_space_kib)"
+    printf 'About %d GiB is now available for builds.\n' "$((available / 1024 / 1024))" >&2
+    ((available >= minimum_gb * 1024 * 1024)) && return 0
+  fi
+  fail "Container builds need about ${minimum_gb} GiB; about $((available / 1024 / 1024)) GiB is available (host free space plus space the container engine already holds). Free disk space, or set KIONGA_MIN_BUILD_FREE_GB to a lower value if you know the build fits."
+}
+
+missing_services() {
+  compose config --format json | python3 "$ROOT/scripts/build_inputs.py" missing
 }
 
 retry() {
@@ -196,15 +327,31 @@ BUILD_STATE="$ROOT/.local-state/build-inputs.json"
 
 start_platform() {
   local -a args=(up --detach --pull never --remove-orphans)
-  local stale=""
+  local stale="" absent=""
   if [[ "$BUILD_MODE" == never ]]; then
     printf 'Starting only cached images; no image downloads or builds.\n'
     compose "${args[@]}" --no-build
     return
   fi
+  if [[ "$BUILD_MODE" == missing ]]; then
+    # Build only images that do not exist; stale ones keep running as cached
+    # (make local-build-up rebuilds them).
+    absent="$(missing_services)" || return 1
+    if [[ -n "$absent" ]]; then
+      printf 'Building images that are not cached yet: %s\n' "$absent"
+      ensure_build_space
+      check_build_context || return 1
+      # shellcheck disable=SC2086
+      compose build $absent || return 1
+      # shellcheck disable=SC2086
+      record_build_inputs $absent || return 1
+    fi
+    compose "${args[@]}" --no-build
+    return
+  fi
   case "$REBUILD" in
     1|true|TRUE|yes|YES)
-      require_free_space "Container builds" "${KIONGA_MIN_BUILD_FREE_GB:-15}" KIONGA_MIN_BUILD_FREE_GB
+      ensure_build_space
       check_build_context || return 1
       compose build || return 1
       record_build_inputs || return 1
@@ -215,7 +362,7 @@ start_platform() {
       stale="$(stale_services)" || return 1
       if [[ -n "$stale" ]]; then
         printf 'Rebuilding images whose sources changed: %s\n' "$stale"
-        require_free_space "Container builds" "${KIONGA_MIN_BUILD_FREE_GB:-15}" KIONGA_MIN_BUILD_FREE_GB
+        ensure_build_space
         check_build_context || return 1
         # shellcheck disable=SC2086
         compose build $stale || return 1
@@ -294,13 +441,12 @@ main() {
   local gateway_port jupyter_port
   require_positive_integer KIONGA_START_RETRIES "$MAX_ATTEMPTS"
   require_positive_integer KIONGA_START_TIMEOUT_SECONDS "$START_TIMEOUT_SECONDS"
-  [[ "$BUILD_MODE" == auto || "$BUILD_MODE" == never ]] || fail "KIONGA_BUILD_MODE must be auto or never"
-  "${ENGINE[@]}" compose version >/dev/null 2>&1 || fail "A container engine and Compose provider are required."
-  "${ENGINE[@]}" info >/dev/null 2>&1 || fail "The selected container engine is not running. Start Docker or the Podman machine and retry."
-  warn_low_disk_space
+  [[ "$BUILD_MODE" == auto || "$BUILD_MODE" == missing || "$BUILD_MODE" == never ]] || fail "KIONGA_BUILD_MODE must be missing, auto or never"
+  ensure_engine
+  load_port_choices
   choose_ports
 
-  if [[ "$BUILD_MODE" == auto ]]; then
+  if [[ "$BUILD_MODE" != never ]]; then
     printf 'Starting Kionga with at most %s concurrent image downloads.\n' "$COMPOSE_PARALLEL_LIMIT"
     printf 'Image downloads and Dockerfile RUN commands execute in the selected container engine; this terminal only shows their output. Image layers still use host-backed disk.\n'
     retry "Download missing upstream images" \
@@ -313,7 +459,7 @@ main() {
   if [[ "$BUILD_MODE" == never ]]; then
     start_platform || {
       diagnostics
-      fail "a required image is not cached or the stack could not start. 'make local-up' never downloads or builds; use 'make local-build-up' when you have enough disk space, or deploy to a remote Kubernetes cluster."
+      fail "a required image is not cached or the stack could not start. 'make local-start' never downloads or builds; use 'make local-up' to fetch and build what is missing."
     }
   else
     retry "Build missing images and start the platform" start_platform || {

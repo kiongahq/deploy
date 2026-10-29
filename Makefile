@@ -16,12 +16,13 @@ test:                      ## deploy gate tests (compose wiring, Helm chart, VM 
 
 local: local-up
 
-local-up:                  ## start cached images without downloading or building
+local-up:                  ## start; restart a stuck engine, move busy ports, pull/build only what is missing
 	bash scripts/local-up.sh
 
-local-start: local-up       ## alias for cached-only startup
+local-start:               ## start cached images only (no downloads or builds)
+	KIONGA_BUILD_MODE=never bash scripts/local-up.sh
 
-local-build-up:            ## build stale images inside Docker/Podman, then start
+local-build-up:            ## like local-up, and also rebuild images whose sources changed
 	KIONGA_BUILD_MODE=auto bash scripts/local-up.sh
 
 local-rebuild:

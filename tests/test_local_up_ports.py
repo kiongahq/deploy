@@ -10,6 +10,7 @@ import json
 import re
 import socket
 import subprocess
+import tempfile
 
 import pytest
 import yaml
@@ -38,16 +39,19 @@ def test_table_covers_every_default_published_port():
     assert set(table()) == expected
 
 
-def choose(busy, env=None, existing=None):
+def choose(busy, env=None, existing=None, dotenv=None, state=None):
     """Run choose_ports with compose and the port probe stubbed; return the
-    exported variables and the script's output."""
+    exported variables and the script's output. ``dotenv`` ports appear in the
+    rendered config like .env values (not in the shell); ``state`` is the
+    remembered-ports file."""
     rendered = {"services": {}}
     for service, target, var, default in table():
-        published = (env or {}).get(var, default)
+        published = (env or {}).get(var, (dotenv or {}).get(var, default))
         rendered["services"].setdefault(service, {"ports": []})["ports"].append(
             {"target": target, "published": str(published)})
     harness = f"""
         source {SCRIPT}
+        PORT_STATE={state or tempfile.mkdtemp() + "/ports.env"}
         compose() {{
           case "$1" in
             config) printf '%s' '{json.dumps(rendered)}' ;;
@@ -87,10 +91,31 @@ def test_running_stack_keeps_its_ports():
     assert exported["POSTGRES_PORT"] == "15432"
 
 
-def test_explicit_port_is_never_moved():
+def test_port_set_for_the_command_is_never_moved():
     code, _, output = choose(busy=[25432], env={"POSTGRES_PORT": "25432"})
     assert code != 0
-    assert "Set POSTGRES_PORT to a free port" in output
+    assert "POSTGRES_PORT=25432 was set for this command" in output
+
+
+def test_busy_dotenv_port_moves_and_is_remembered(tmp_path):
+    # .env pins 15432, which another project's Postgres holds: move, don't fail.
+    state = tmp_path / "ports.env"
+    state.write_text("REDIS_PORT=16379\n")
+    code, exported, output = choose(busy=[15432], dotenv={"POSTGRES_PORT": 15432}, state=state)
+    assert code == 0, output
+    assert exported["POSTGRES_PORT"] == "15433", "default+10000 is the busy port itself, so the next one is used"
+    assert sorted(state.read_text().splitlines()) == ["POSTGRES_PORT=15433", "REDIS_PORT=16379"]
+
+
+def test_remembered_ports_load_unless_set_for_the_command(tmp_path):
+    state = tmp_path / "ports.env"
+    state.write_text("POSTGRES_PORT=15433\nnot a port line\n")
+    script = f"source {SCRIPT}; PORT_STATE={state}; load_port_choices; echo \"$POSTGRES_PORT\""
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
+    assert result.stdout.strip() == "15433"
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                            env={"PATH": "/usr/bin:/bin", "POSTGRES_PORT": "25432"})
+    assert result.stdout.strip() == "25432", "a port set for the command wins over the remembered one"
 
 
 def test_port_probe_sees_a_loopback_listener():

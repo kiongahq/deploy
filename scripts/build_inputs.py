@@ -15,6 +15,7 @@ Usage:
   compose config --format json | build_inputs.py stale  --state FILE
   compose config --format json | build_inputs.py record --state FILE SERVICE...
   compose config --format json | build_inputs.py registry-images
+  compose config --format json | build_inputs.py missing
 """
 
 from __future__ import annotations
@@ -133,6 +134,12 @@ def stale(config: dict, state: dict, lookup=image_id) -> list[str]:
     return out
 
 
+def missing(config: dict, lookup=image_id) -> list[str]:
+    """Built services whose image is not in the local store at all (a cold
+    start), as opposed to stale ones whose sources changed."""
+    return [name for name in sorted(built_services(config)) if not lookup(image_name(config, name))]
+
+
 def record(config: dict, state: dict, services: list[str], lookup=image_id) -> dict:
     services_cfg = built_services(config)
     for name in services:
@@ -143,7 +150,7 @@ def record(config: dict, state: dict, services: list[str], lookup=image_id) -> d
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["stale", "record", "registry-images"])
+    parser.add_argument("command", choices=["stale", "record", "registry-images", "missing"])
     parser.add_argument("services", nargs="*")
     parser.add_argument("--state", type=Path)
     # The shell passes `record --state FILE SERVICE...`; plain parse_args
@@ -152,6 +159,9 @@ def main(argv: list[str]) -> int:
     config = json.load(sys.stdin)
     if args.command == "registry-images":
         print("\n".join(registry_images(config)))
+        return 0
+    if args.command == "missing":
+        print(" ".join(missing(config)))
         return 0
     if args.state is None:
         parser.error("--state is required for stale and record")
