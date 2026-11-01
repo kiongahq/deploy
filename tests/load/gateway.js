@@ -104,7 +104,7 @@ export function setup() {
   const login = http.post(`${baseURL}/auth/local/login`, {
     username: __ENV.MLAIOPS_LOCAL_USERNAME || "admin",
     password: __ENV.MLAIOPS_LOCAL_PASSWORD || "mlaiops-local",
-    return_to: "/console.html",
+    return_to: "/console",
   }, { redirects: 0 });
   const session = login.cookies.kionga_local_session;
   if (!session || !session[0] || !session[0].value) {
