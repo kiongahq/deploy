@@ -46,8 +46,8 @@ jobs:
         # The workbench and IDE are dev surfaces this lane does not exercise;
         # the build job proves they compile.
         run: |
-          core=$(docker compose -f compose.yaml config --services | grep -vxE 'jupyter|ide')
-          docker compose -f compose.yaml up -d --build $core
+          mapfile -t core < <(docker compose -f compose.yaml config --services | grep -vxE 'jupyter|ide')
+          docker compose -f compose.yaml up -d --build "${core[@]}"
           bash scripts/local-topics.sh
       - name: Wait for the stack
         run: |
