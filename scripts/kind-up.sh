@@ -42,7 +42,11 @@ for repo in platform trace-proxy agent-runtime sdk-python; do
   [[ -d "$SRC/$repo" ]] || { echo "Missing $SRC/$repo. Run 'make workspace' first." >&2; exit 1; }
 done
 for service in gateway operator integration-worker feature-gateway storage-proxy metrics-collector; do
-  docker build --build-arg "SERVICE=$service" -t "mlaiops/$service:dev" "$SRC/platform/go"
+  if [[ "$service" == "gateway" ]]; then
+    docker build -f "$SRC/platform/Dockerfile.gateway" -t "mlaiops/$service:dev" "$SRC/platform"
+  else
+    docker build --build-arg "SERVICE=$service" -t "mlaiops/$service:dev" "$SRC/platform/go"
+  fi
   kind load docker-image --name "$CLUSTER" "mlaiops/$service:dev"
 done
 docker build -t mlaiops/trace-proxy:dev "$SRC/trace-proxy"
