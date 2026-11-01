@@ -224,8 +224,8 @@ services:
   gateway:
     restart: unless-stopped
     build:
-      context: ${KIONGA_SRC:-..}/platform/go
-      dockerfile: Dockerfile
+      context: ${KIONGA_SRC:-..}/platform
+      dockerfile: Dockerfile.gateway
       args: {SERVICE: gateway}
     depends_on:
       postgres: {condition: service_healthy}
