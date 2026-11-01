@@ -48,7 +48,7 @@ make local-start              # cached images only: no downloads or builds
   (untagged, unused) images; tagged images, containers and volumes are never
   touched. Set `KIONGA_AUTO_PRUNE=0` or `KIONGA_AUTO_RECOVER_ENGINE=0` to opt out.
 
-Open <http://localhost:8080> and sign in with `admin` / `mlaiops-local`. Other
+Open [http://localhost:8080](http://localhost:8080) and sign in with `admin` / `mlaiops-local`. Other
 targets: `make local-status`, `make local-logs`, `make local-down`, `make ide-up`
 (browser IDE), `make workspace-pull` (update clean checkouts) and `make smoke`
 (end-to-end check against the running stack).
@@ -90,7 +90,7 @@ make k8s-tools && make kind-up                           # local Kubernetes
   [Single server](https://kiongahq.github.io/docs/operations/public-vm/),
   [Deploy on Kubernetes](https://kiongahq.github.io/docs/operations/managed-kubernetes/)
   and [Single sign-on](https://kiongahq.github.io/docs/operations/single-sign-on/)
-- Engineering handbook: <https://kiongahq.github.io/docs/engineering/>
+- Engineering handbook: [https://kiongahq.github.io/docs/engineering/](https://kiongahq.github.io/docs/engineering/)
 - How this repository is laid out: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Contributing
