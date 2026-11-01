@@ -27,7 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - run: bash scripts/workspace.sh
       - run: docker compose -f compose.yaml --profile ide build
 
@@ -36,7 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - run: bash scripts/workspace.sh
       - name: Boot the core platform
         # The workbench and IDE are dev surfaces this lane does not exercise;
@@ -61,7 +65,7 @@ jobs:
         run: ./scripts/demo-smoke.sh
       - name: Concurrency stress
         run: REQUESTS=300 CONCURRENCY=48 ./scripts/stress-test.sh
-      - uses: grafana/setup-k6-action@v1
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1
       - name: Load test with SLO thresholds
         run: k6 run -e PROFILE=smoke -e MLAIOPS_URL=http://localhost:8080 tests/load/gateway.js
       - name: Service logs on failure
