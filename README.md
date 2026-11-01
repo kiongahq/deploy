@@ -48,7 +48,11 @@ make local-start              # cached images only: no downloads or builds
   (untagged, unused) images; tagged images, containers and volumes are never
   touched. Set `KIONGA_AUTO_PRUNE=0` or `KIONGA_AUTO_RECOVER_ENGINE=0` to opt out.
 
-Open [http://localhost:8080](http://localhost:8080) and sign in with `admin` / `mlaiops-local`. Other
+Open the console URL printed by startup (normally [http://127.0.0.1:8080](http://127.0.0.1:8080))
+and sign in with `admin` / `mlaiops-local`. The numeric address matches the container
+binding and readiness check. Single sign-on also requires the configured callback
+host (normally `localhost`) to reach this same gateway. Stop a standalone
+`make run` gateway on the same port before using the Compose stack. Other
 targets: `make local-status`, `make local-logs`, `make local-down`, `make ide-up`
 (browser IDE), `make workspace-pull` (update clean checkouts) and `make smoke`
 (end-to-end check against the running stack).
