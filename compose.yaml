@@ -240,6 +240,11 @@ services:
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       KIONGA_JUPYTER_UPSTREAM: http://jupyter:8888
       KIONGA_CREDENTIAL_KEY: ${KIONGA_CREDENTIAL_KEY:-}
+      # Repository integration is independent of the Dex GitHub sign-in connector.
+      KIONGA_GITHUB_APP_SLUG: ${KIONGA_GITHUB_APP_SLUG:-}
+      KIONGA_GITHUB_APP_CLIENT_ID: ${KIONGA_GITHUB_APP_CLIENT_ID:-}
+      KIONGA_GITHUB_APP_CLIENT_SECRET: ${KIONGA_GITHUB_APP_CLIENT_SECRET:-}
+      KIONGA_GITHUB_APP_CALLBACK_URL: ${KIONGA_GITHUB_APP_CALLBACK_URL:-}
       KIONGA_IDE_UPSTREAM: http://ide:8080
       KIONGA_LANGFLOW_UPSTREAM: http://langflow:7860
       # Optional knowledge backends. Register each base with an env: reference.
