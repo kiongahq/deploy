@@ -45,11 +45,26 @@ def test_compose_reuses_existing_images_for_bucket_init_and_materializer():
     assert "minio/mc" not in json.dumps(config)
 
 
-def test_ide_and_gateway_builds_use_small_contexts():
+def test_ide_and_backend_builds_use_small_contexts():
     services = compose_config("ide")["services"]
     assert services["ide"]["build"]["context"] == str(SRC / "workspace")
     assert services["ide"]["build"]["args"]["INSTALL_CODING_AGENTS"] == "false"
-    assert services["gateway"]["build"]["context"] == str(SRC / "platform" / "go")
+    for name in ["feature-gateway", "storage-proxy"]:
+        assert services[name]["build"]["context"] == str(SRC / "platform" / "go")
+        assert services[name]["build"]["dockerfile"] == "Dockerfile"
+    backend = (component("platform") / "go" / "Dockerfile").read_text()
+    assert "FROM node:" not in backend
+    assert "npm " not in backend
+
+
+def test_gateway_build_includes_frontend_without_coupling_backend_images():
+    gateway = compose_config()["services"]["gateway"]["build"]
+    assert gateway["context"] == str(SRC / "platform")
+    assert gateway["dockerfile"] == "Dockerfile.gateway"
+    dockerfile = (component("platform") / "Dockerfile.gateway").read_text()
+    assert "COPY frontend/ ./" in dockerfile
+    assert "RUN npm run build" in dockerfile
+    assert "COPY --from=frontend" in dockerfile
 
 
 def test_every_build_comes_from_a_component_repo():

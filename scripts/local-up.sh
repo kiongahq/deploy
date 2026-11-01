@@ -551,9 +551,9 @@ main() {
 
   printf '\nKionga is ready.\n'
   jupyter_port="$(published_port jupyter 8888 "${JUPYTER_PORT:-8888}")"
-  printf '  Console:  http://localhost:%s\n' "$gateway_port"
+  printf '  Console:  http://127.0.0.1:%s\n' "$gateway_port"
   printf '  Login:    admin / mlaiops-local\n'
-  printf '  Jupyter:  http://localhost:%s/workspace.html?tool=workbench (uses your console login)\n' "$gateway_port"
+  printf '  Jupyter:  http://127.0.0.1:%s/workspace?tool=workbench (uses your console login)\n' "$gateway_port"
   printf '  IDE:      make ide-up, then open IDE workspace from the console\n'
   printf '  Status:   make local-status\n'
   printf '  Logs:     make local-logs\n'
