@@ -246,5 +246,20 @@ def test_scripts_reach_compose_through_the_wrapper_that_loads_generated_keys():
     # A direct `docker compose` stops on the unset keys, and a caller that hides
     # stderr would silently skip its work. public-up.sh reads .env instead.
     for script in (ROOT / "scripts").glob("*.sh"):
-        if script.name != "container.sh":
-            assert "docker compose" not in script.read_text(), f"{script.name} bypasses container.sh"
+        if script.name == "container.sh":
+            continue
+        commands = [line for line in script.read_text().splitlines() if not line.lstrip().startswith("#")]
+        assert not any("docker compose" in line for line in commands), f"{script.name} bypasses container.sh"
+
+
+def test_public_preflight_requires_the_keys_when_it_exists():
+    # scripts/public-preflight.sh arrives with the public-mode preflight change;
+    # whichever change lands second keeps the two in step.
+    preflight = ROOT / "scripts/public-preflight.sh"
+    if not preflight.exists():
+        pytest.skip("no public preflight on this branch")
+    required = next(line for line in preflight.read_text().splitlines() if line.startswith("REQUIRED="))
+    service = yaml.safe_load((ROOT / "compose.public.yaml").read_text())["services"]["public-preflight"]["environment"]
+    for name in KEY_VARS:
+        assert name in required, f"add {name} to REQUIRED in public-preflight.sh"
+        assert service[name] == "${%s:?set %s in .env (see .env.example)}" % (name, name)
