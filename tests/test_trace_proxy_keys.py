@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from test_sso import ROOT, compose_config
+from test_sso import PUBLIC_ENV, ROOT, compose_config
 
 KEY_VARS = ("TRACE_PROXY_PROJECT_KEY", "TRACE_PROXY_KEYS")
 AGENTS = ("agent-runtime", "agent-designer-runner")
@@ -96,3 +96,26 @@ def test_env_example_recipe_produces_keys_the_shell_and_compose_both_read(tmp_pa
     assert json.loads(services["trace-proxy"]["environment"]["TRACE_PROXY_KEYS"]) == [entry]
     key = services["agent-runtime"]["environment"]["OPENAI_API_KEY"]
     assert subprocess.run(["openssl", "dgst", "-sha256", "-r"], input=key, capture_output=True, text=True, check=True).stdout.split()[0] == entry["key_sha256"]
+
+
+@pytest.mark.parametrize("name", KEY_VARS)
+def test_public_mode_requires_operator_keys(name):
+    result = render_without(name, files=("compose.yaml", "compose.public.yaml"), extra=PUBLIC_ENV)
+    assert result.returncode != 0
+    assert name in result.stderr and ".env.example" in result.stderr
+
+
+def test_public_mode_passes_operator_keys_through_and_stays_unpublished():
+    services = compose_config("compose.yaml", "compose.public.yaml",
+                              env={**PUBLIC_ENV, "TRACE_PROXY_PROJECT_KEY": "operator-key", "TRACE_PROXY_KEYS": '[{"key_id":"ops"}]'})
+    assert services["trace-proxy"]["environment"]["TRACE_PROXY_KEYS"] == '[{"key_id":"ops"}]'
+    assert not services["trace-proxy"].get("ports")
+    for agent in AGENTS:
+        assert services[agent]["environment"]["OPENAI_API_KEY"] == "operator-key"
+
+
+def test_public_overlay_has_no_fixed_key():
+    text = (ROOT / "compose.public.yaml").read_text()
+    for name in KEY_VARS:
+        assert not re.search(r"\$\{" + name + r":?-", text), f"{name} must not have a default"
+    assert "TRACE_PROXY_ALLOW_UNAUTHENTICATED" not in text
