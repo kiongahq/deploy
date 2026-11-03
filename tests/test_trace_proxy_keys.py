@@ -259,7 +259,8 @@ def test_public_preflight_requires_the_keys_when_it_exists():
     if not preflight.exists():
         pytest.skip("no public preflight on this branch")
     required = next(line for line in preflight.read_text().splitlines() if line.startswith("REQUIRED="))
-    service = yaml.safe_load((ROOT / "compose.public.yaml").read_text())["services"]["public-preflight"]["environment"]
+    overlay = (ROOT / "compose.public.yaml").read_text()  # not YAML-safe: it uses !reset
+    service = overlay[overlay.index("public-preflight:"):overlay.index("  caddy:")]
     for name in KEY_VARS:
         assert name in required, f"add {name} to REQUIRED in public-preflight.sh"
-        assert service[name] == "${%s:?set %s in .env (see .env.example)}" % (name, name)
+        assert "%s: ${%s:?" % (name, name) in service, f"pass {name} to the public-preflight service"
