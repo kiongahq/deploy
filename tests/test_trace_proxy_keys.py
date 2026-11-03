@@ -239,6 +239,8 @@ def test_every_ci_job_using_compose_generates_keys_first():
         generators = [i for i, run in enumerate(runs) if "TRACE_PROXY_PROJECT_KEY=" in run and "GITHUB_ENV" in run]
         assert generators and generators[0] < first_compose
         assert "add-mask" in runs[generators[0]]
+        for name in ("SERVING_OBJECTSTORE_ACCESS_KEY", "SERVING_OBJECTSTORE_SECRET_KEY"):
+            assert f"{name}=" in runs[generators[0]]
     assert checked >= 2
 
 
@@ -261,6 +263,6 @@ def test_public_preflight_requires_the_keys_when_it_exists():
     required = next(line for line in preflight.read_text().splitlines() if line.startswith("REQUIRED="))
     overlay = (ROOT / "compose.public.yaml").read_text()  # not YAML-safe: it uses !reset
     service = overlay[overlay.index("public-preflight:"):overlay.index("  caddy:")]
-    for name in KEY_VARS:
+    for name in (*KEY_VARS, "SERVING_OBJECTSTORE_ACCESS_KEY", "SERVING_OBJECTSTORE_SECRET_KEY"):
         assert name in required, f"add {name} to REQUIRED in public-preflight.sh"
         assert "%s: ${%s:?" % (name, name) in service, f"pass {name} to the public-preflight service"

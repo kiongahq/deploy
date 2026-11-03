@@ -123,6 +123,9 @@ services:
       AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
       AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       S3_ENDPOINT: http://objectstore:9000
+      # The read-only user this job creates for the serving manager.
+      SERVING_OBJECTSTORE_ACCESS_KEY: ${SERVING_OBJECTSTORE_ACCESS_KEY:?SERVING_OBJECTSTORE_ACCESS_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+      SERVING_OBJECTSTORE_SECRET_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?SERVING_OBJECTSTORE_SECRET_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
     volumes:
       - ./objectstore-init.py:/bootstrap/objectstore-init.py:ro
 
@@ -458,8 +461,12 @@ services:
       PLATFORM_NETWORK: mlaiops_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      # Read-only on the model buckets (objectstore-init.py), never the store's
+      # root user: artifact downloads run with these credentials.
+      AWS_ACCESS_KEY_ID: ${SERVING_OBJECTSTORE_ACCESS_KEY:?SERVING_OBJECTSTORE_ACCESS_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+      AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?SERVING_OBJECTSTORE_SECRET_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+    depends_on:
+      objectstore-init: {condition: service_completed_successfully}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${SERVING_MANAGER_PORT:-8085}:8085"]
 
   realtime-processor:

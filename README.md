@@ -54,6 +54,10 @@ make local-start              # cached images only: no downloads or builds
   `LLM_UPSTREAM_API_KEY` in `.env`, not `OPENAI_API_KEY`: the proxy holds it and agents
   never see it. `make public-up` and other deployments never read this file; set both
   values yourself (`.env.example` has the commands).
+- **Model artifact reader:** the file also holds `SERVING_OBJECTSTORE_ACCESS_KEY` and
+  `SERVING_OBJECTSTORE_SECRET_KEY`. `objectstore-init` creates that user with read-only
+  access to `mlaiops-models` and `mlaiops-artifacts`, and the serving manager downloads
+  artifacts with it instead of the store's root user.
 - **Disk:** builds count the host's free space plus space the Podman machine
   already holds but does not use. If that is short, it removes dangling
   (untagged, unused) images; tagged images, containers and volumes are never

@@ -17,7 +17,8 @@ import pytest
 import yaml
 from test_sso import ROOT
 
-NAMES = ("JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN", "TRACE_PROXY_PROJECT_KEY")
+NAMES = ("JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN", "TRACE_PROXY_PROJECT_KEY",
+         "SERVING_OBJECTSTORE_ACCESS_KEY", "SERVING_OBJECTSTORE_SECRET_KEY")
 STRONG = "".join(["abcdef0123456789"] * 3)
 
 
@@ -157,6 +158,11 @@ def test_compose_through_the_wrapper_renders_generated_values(checkout):
     assert services["agent-runtime"]["environment"]["OPENAI_API_KEY"] == key
     assert services["agent-designer-runner"]["environment"]["OPENAI_API_KEY"] == key
     assert services["jupyter"]["environment"]["JUPYTER_TOKEN"] == values["JUPYTER_TOKEN"]
+    reader = services["serving-manager"]["environment"]
+    assert reader["AWS_ACCESS_KEY_ID"] == values["SERVING_OBJECTSTORE_ACCESS_KEY"]
+    assert reader["AWS_SECRET_ACCESS_KEY"] == values["SERVING_OBJECTSTORE_SECRET_KEY"]
+    init = services["objectstore-init"]["environment"]
+    assert init["SERVING_OBJECTSTORE_SECRET_KEY"] == values["SERVING_OBJECTSTORE_SECRET_KEY"]
 
 
 def test_state_directory_is_ignored_by_git():
