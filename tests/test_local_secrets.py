@@ -5,6 +5,8 @@ job token, so compose.yaml must carry no weak default and every compose call mus
 render the same generated values. Values are assembled at runtime so secret
 scanners never see a literal credential."""
 
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -15,7 +17,7 @@ import pytest
 import yaml
 from test_sso import ROOT
 
-NAMES = ("JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN")
+NAMES = ("JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN", "TRACE_PROXY_PROJECT_KEY")
 STRONG = "".join(["abcdef0123456789"] * 3)
 
 
@@ -45,9 +47,9 @@ def test_generates_distinct_strong_tokens_in_a_private_file(checkout):
     result = run_ensure(checkout)
     assert result.returncode == 0, result.stderr
     values = stored(checkout)
-    assert set(values) == set(NAMES)
-    assert len(set(values.values())) == 3
-    assert all(re.fullmatch(r"[0-9a-f]{48}", value) for value in values.values())
+    assert set(values) == {*NAMES, "TRACE_PROXY_KEYS"}
+    assert len({values[name] for name in NAMES}) == len(NAMES)
+    assert all(re.fullmatch(r"[0-9a-f]{48}", values[name]) for name in NAMES)
     mode = stat.S_IMODE((checkout / ".local-state" / "secrets.env").stat().st_mode)
     assert mode == 0o600
     assert not [path.name for path in (checkout / ".local-state").iterdir() if path.name != "secrets.env"]
@@ -118,6 +120,43 @@ def test_container_wrapper_exports_stored_tokens_only_to_compose(checkout):
     assert all(f"{name}={values[name]}" in composed for name in NAMES)
     assert all(name not in run("ps") for name in NAMES)
     assert f"JUPYTER_TOKEN={STRONG}" in run("compose", "ps", JUPYTER_TOKEN=STRONG)
+
+
+def test_container_wrapper_keeps_the_json_key_list_intact(checkout):
+    # TRACE_PROXY_KEYS holds JSON, which the token pattern would silently drop.
+    assert run_ensure(checkout).returncode == 0
+    keys = stored(checkout)["TRACE_PROXY_KEYS"]
+    stubs = checkout / "stubs"
+    stubs.mkdir()
+    docker = stubs / "docker"
+    docker.write_text('#!/bin/sh\nprintf %s "$TRACE_PROXY_KEYS"\n')
+    docker.chmod(0o755)
+    env = {"PATH": f"{stubs}:{os.environ['PATH']}", "KIONGA_ENGINE": "docker"}
+    run = lambda **extra: subprocess.run(["bash", "scripts/container.sh", "compose", "ps"], cwd=checkout, env={**env, **extra},
+                                         capture_output=True, text=True, timeout=30).stdout
+    assert keys.startswith("'[{") and run() == keys.strip("'")
+    assert run(TRACE_PROXY_KEYS="from-shell") == "from-shell"
+
+
+@pytest.mark.skipif(not shutil.which("docker"), reason="Docker Compose is required for config validation")
+def test_compose_through_the_wrapper_renders_generated_values(checkout):
+    # The real compose.yaml, rendered from nothing but the generated file, as
+    # make local-up and make langflow-up do on every recreation.
+    assert run_ensure(checkout).returncode == 0
+    values = stored(checkout)
+    missing = (*NAMES, "TRACE_PROXY_KEYS")
+    env = {k: v for k, v in os.environ.items() if k not in missing}
+    env.update({"KIONGA_ENGINE": "docker", "KIONGA_SRC": str(ROOT.parent)})
+    result = subprocess.run(["bash", str(checkout / "scripts/container.sh"), "compose", "--env-file", "/dev/null", "-f", str(ROOT / "compose.yaml"), "config", "--format", "json"],
+                            cwd=ROOT, capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stderr
+    services = json.loads(result.stdout)["services"]
+    key = values["TRACE_PROXY_PROJECT_KEY"]
+    [entry] = json.loads(services["trace-proxy"]["environment"]["TRACE_PROXY_KEYS"])
+    assert entry["key_sha256"] == hashlib.sha256(key.encode()).hexdigest()
+    assert services["agent-runtime"]["environment"]["OPENAI_API_KEY"] == key
+    assert services["agent-designer-runner"]["environment"]["OPENAI_API_KEY"] == key
+    assert services["jupyter"]["environment"]["JUPYTER_TOKEN"] == values["JUPYTER_TOKEN"]
 
 
 def test_state_directory_is_ignored_by_git():

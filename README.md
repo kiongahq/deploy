@@ -48,6 +48,12 @@ make local-start              # cached images only: no downloads or builds
   `.local-state/secrets.env` (mode 0600, ignored by Git) so restarts keep working.
   A value in the shell or in `.env` wins, and must be at least 32 characters.
   To rotate them, delete the file and run `make local-up` again.
+- **Trace proxy keys:** the same file holds a random `TRACE_PROXY_PROJECT_KEY`, which
+  agents use to call the trace proxy, and `TRACE_PROXY_KEYS`, the proxy's list holding
+  only that key's SHA-256. For real OpenAI-compatible models, put the provider key in
+  `LLM_UPSTREAM_API_KEY` in `.env`, not `OPENAI_API_KEY`: the proxy holds it and agents
+  never see it. `make public-up` and other deployments never read this file; set both
+  values yourself (`.env.example` has the commands).
 - **Disk:** builds count the host's free space plus space the Podman machine
   already holds but does not use. If that is short, it removes dangling
   (untagged, unused) images; tagged images, containers and volumes are never

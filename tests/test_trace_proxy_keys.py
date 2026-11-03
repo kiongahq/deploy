@@ -2,6 +2,7 @@
 key itself (kiongahq/trace-proxy#40). Compose must wire both sides and must not
 ship a key anyone could read in this repository."""
 
+import hashlib
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import subprocess
 import pytest
 import yaml
 
+from test_local_secrets import STRONG, checkout, run_ensure, stored  # noqa: F401 (checkout is a fixture)
 from test_production_deploy import render_chart
 from test_sso import PUBLIC_ENV, ROOT, compose_config
 
@@ -156,3 +158,93 @@ def test_chart_mounts_the_provider_key_when_listed(tmp_path):
 def test_production_example_sources_trace_proxy_keys_externally():
     example = yaml.safe_load((ROOT / "helm/production.example.yaml").read_text())
     assert [t["secretKey"] for t in example["externalSecrets"]["targets"]["kionga-tracing"]] == ["TRACE_PROXY_KEYS"]
+
+
+def generated_keys(path):
+    return json.loads(stored(path)["TRACE_PROXY_KEYS"].strip("'"))
+
+
+def sha256(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def test_local_up_generates_a_random_key_and_derives_its_hash(checkout):  # noqa: F811
+    assert run_ensure(checkout).returncode == 0
+    values = stored(checkout)
+    assert re.fullmatch(r"[0-9a-f]{48}", values["TRACE_PROXY_PROJECT_KEY"])
+    [entry] = generated_keys(checkout)
+    assert entry == {"key_id": "local-agents", "key_sha256": sha256(values["TRACE_PROXY_PROJECT_KEY"]), "project": "local"}
+    assert values["TRACE_PROXY_PROJECT_KEY"] not in values["TRACE_PROXY_KEYS"]
+
+
+def test_two_checkouts_get_different_keys(tmp_path):
+    keys = []
+    for name in ("one", "two"):
+        path = tmp_path / name
+        (path / "scripts").mkdir(parents=True)
+        shutil.copy(ROOT / "scripts/local-up.sh", path / "scripts")
+        assert run_ensure(path).returncode == 0
+        keys.append(stored(path)["TRACE_PROXY_PROJECT_KEY"])
+    assert keys[0] != keys[1]
+
+
+def test_restart_keeps_key_and_rotation_updates_the_hash(checkout):  # noqa: F811
+    assert run_ensure(checkout).returncode == 0
+    first = stored(checkout)
+    assert run_ensure(checkout).returncode == 0
+    assert stored(checkout) == first
+    (checkout / ".env").write_text(f"TRACE_PROXY_PROJECT_KEY={STRONG}\n")
+    assert run_ensure(checkout).returncode == 0
+    assert stored(checkout)["TRACE_PROXY_PROJECT_KEY"] == STRONG
+    assert generated_keys(checkout)[0]["key_sha256"] == sha256(STRONG)
+
+
+def test_operator_key_list_is_kept_and_a_mismatch_warns(checkout):  # noqa: F811
+    own = f'[{{"key_id":"mine","key_sha256":"{sha256(STRONG)}","project":"p"}}]'
+    (checkout / ".env").write_text(f"TRACE_PROXY_PROJECT_KEY={STRONG}\nTRACE_PROXY_KEYS='{own}'\n")
+    result = run_ensure(checkout)
+    assert result.returncode == 0 and "401" not in result.stderr
+    assert generated_keys(checkout)[0]["key_id"] == "mine"
+    (checkout / ".local-state/secrets.env").unlink()
+    (checkout / ".env").write_text(f"TRACE_PROXY_KEYS='{own}'\n")
+    result = run_ensure(checkout)
+    assert result.returncode == 0 and "401" in result.stderr
+    assert STRONG not in result.stderr
+
+
+def test_generated_secrets_never_print_the_key(checkout):  # noqa: F811
+    result = run_ensure(checkout)
+    assert stored(checkout)["TRACE_PROXY_PROJECT_KEY"] not in result.stdout + result.stderr
+
+
+def test_public_up_never_reads_generated_keys():
+    assert "secrets.env" not in (ROOT / "public-up.sh").read_text()
+
+
+def test_operator_key_list_with_a_single_quote_stops_the_start(checkout):  # noqa: F811
+    result = run_ensure(checkout, TRACE_PROXY_KEYS="['oops']")
+    assert result.returncode != 0 and "single quote" in result.stderr
+    assert not (checkout / ".local-state/secrets.env").exists()
+
+
+def test_every_ci_job_using_compose_generates_keys_first():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/pressure.yml").read_text())
+    checked = 0
+    for job in workflow["jobs"].values():
+        runs = [step.get("run", "") for step in job["steps"]]
+        first_compose = next((i for i, run in enumerate(runs) if "docker compose" in run), None)
+        if first_compose is None:
+            continue
+        checked += 1
+        generators = [i for i, run in enumerate(runs) if "TRACE_PROXY_PROJECT_KEY=" in run and "GITHUB_ENV" in run]
+        assert generators and generators[0] < first_compose
+        assert "add-mask" in runs[generators[0]]
+    assert checked >= 2
+
+
+def test_scripts_reach_compose_through_the_wrapper_that_loads_generated_keys():
+    # A direct `docker compose` stops on the unset keys, and a caller that hides
+    # stderr would silently skip its work. public-up.sh reads .env instead.
+    for script in (ROOT / "scripts").glob("*.sh"):
+        if script.name != "container.sh":
+            assert "docker compose" not in script.read_text(), f"{script.name} bypasses container.sh"

@@ -13,7 +13,7 @@ REBUILD="${KIONGA_REBUILD:-0}"
 BUILD_MODE="${KIONGA_BUILD_MODE:-missing}"
 PORT_STATE="$ROOT/.local-state/ports.env"
 SECRET_STATE="$ROOT/.local-state/secrets.env"
-LOCAL_SECRETS=(JUPYTER_TOKEN IDE_PASSWORD KIONGA_WORKSPACE_JOB_TOKEN)
+LOCAL_SECRETS=(JUPYTER_TOKEN IDE_PASSWORD KIONGA_WORKSPACE_JOB_TOKEN TRACE_PROXY_PROJECT_KEY)
 MIN_LOCAL_SECRET_LENGTH=32
 # Port variables the operator set in the shell for this command. Only these are
 # never moved; ports from .env, defaults and remembered choices may move.
@@ -155,13 +155,29 @@ secret_from_file() {
   printf '%s' "$value"
 }
 
+# The trace proxy's key list for the local project key, which holds only the key's
+# SHA-256. A list set in the shell or .env (say, several projects) is kept as is.
+# The key travels in the environment, never in an argument other processes can read.
+trace_proxy_keys() {
+  local keys hash
+  hash="$(PROJECT_KEY="$1" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["PROJECT_KEY"].encode()).hexdigest())')"
+  keys="${TRACE_PROXY_KEYS:-$(secret_from_file TRACE_PROXY_KEYS "$ROOT/.env")}"
+  if [[ -z "$keys" ]]; then
+    printf '[{"key_id":"local-agents","key_sha256":"%s","project":"local"}]' "$hash"
+    return
+  fi
+  [[ "$keys" != *"'"* ]] || fail "TRACE_PROXY_KEYS must not contain a single quote."
+  [[ "$keys" == *"$hash"* ]] || printf 'TRACE_PROXY_KEYS does not list the hash of TRACE_PROXY_PROJECT_KEY; agents will get 401 from the trace proxy.\n' >&2
+  printf '%s' "$keys"
+}
+
 # Workspace tokens are random per checkout and survive restarts, so the gateway
 # and the workspaces always agree. Order: the shell, then .env, then the stored
 # value, and a new random value only when none of those exists. A weak value in
 # .env (an old copy of .env.example) is ignored; one set in the shell is an
 # explicit choice, so it stops the start instead. Values are never printed.
 ensure_local_secrets() {
-  local var value stored from_env content="" temporary
+  local var value stored from_env content="" temporary project_key="" trace_keys
   for var in "${LOCAL_SECRETS[@]}"; do
     value="${!var:-}"
     if [[ -n "$value" ]]; then
@@ -181,7 +197,10 @@ ensure_local_secrets() {
       fi
     fi
     content+="$var=$value"$'\n'
+    [[ "$var" != TRACE_PROXY_PROJECT_KEY ]] || project_key="$value"
   done
+  trace_keys="$(trace_proxy_keys "$project_key")" || exit 1
+  content+="TRACE_PROXY_KEYS='$trace_keys'"$'\n'
   mkdir -p "$(dirname "$SECRET_STATE")"
   temporary="$(mktemp "$SECRET_STATE.XXXXXX")"
   chmod 600 "$temporary"
