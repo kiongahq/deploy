@@ -71,6 +71,10 @@ other machines until you widen it:
 
 `compose.public.yaml` removes every host port except Caddy's `80` and `443`
 (`tests/test_network_exposure.py`, `tests/test_sso.py`).
+It also refuses to start with any built-in local credential: the
+`public-preflight` service (and `public-up.sh`) runs `scripts/public-preflight.sh`,
+which fails when a credential listed in `.env.example` is unset or equals a local
+default, and the services that hold those credentials wait for it to succeed.
 
 Langflow is an optional agent canvas. Start it with `make langflow-up` and stop
 it with `make langflow-down`, using the same Docker or Podman engine as the

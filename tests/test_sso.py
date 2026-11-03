@@ -22,6 +22,14 @@ PUBLIC_ENV = {
     "DEX_CLIENT_SECRET": "public-client-secret", "DEX_ADMIN_EMAIL": "admin@example.com",
     "DEX_ADMIN_PASSWORD_HASH": "$2y$10$hash", "MLAIOPS_INTERNAL_TOKEN": "internal",
     "MLAIOPS_LOCAL_PASSWORD": "break-glass",
+    # Every credential compose.yaml defaults must be supplied in public mode
+    # (scripts/public-preflight.sh, tests/test_public_preflight.py).
+    **{name: f"public-{name.lower().replace('_', '-')}" for name in (
+        "POSTGRES_PASSWORD", "OBJECTSTORE_ACCESS_KEY", "OBJECTSTORE_SECRET_KEY",
+        "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_NEXTAUTH_SECRET", "LANGFUSE_SALT",
+        "LANGFUSE_INIT_USER_PASSWORD", "JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN",
+        "KIONGA_WORKSPACE_API_TOKEN", "KIONGA_DESIGNER_RUNNER_TOKEN", "LANGFLOW_SUPERUSER_PASSWORD",
+        "LANGFLOW_SECRET_KEY")},
 }
 OAUTH_ENV = {
     "KIONGA_GITHUB_CLIENT_ID": "gh-id", "KIONGA_GITHUB_CLIENT_SECRET": "gh-secret-value",

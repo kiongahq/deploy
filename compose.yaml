@@ -17,7 +17,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: mlaiops
-      POSTGRES_PASSWORD: mlaiops-local
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlaiops-local}
       POSTGRES_DB: mlaiops
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"]
     volumes:
@@ -144,13 +144,13 @@ services:
         exec mlflow server --host=0.0.0.0 --port=5000
         --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://mlaiops-models
     environment:
-      BACKEND_STORE_URI: postgresql://mlaiops:mlaiops-local@postgres:5432/mlaiops
+      BACKEND_STORE_URI: postgresql://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops
       # MLflow rejects unknown Host headers (DNS-rebinding protection). Allow
       # the in-network name and the published localhost port only.
       MLFLOW_SERVER_ALLOWED_HOSTS: mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${MLFLOW_PORT:-15000}:5000"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -233,7 +233,7 @@ services:
       objectstore-init: {condition: service_completed_successfully}
       dex: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
       KIONGA_LOG_EXPORTER_URL: ${KIONGA_LOG_EXPORTER_URL:-http://log-exporter:8086}
       MLAIOPS_TENANT: local
@@ -331,7 +331,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
       MLAIOPS_TENANT: ${MLAIOPS_TENANT:-default}
       KIONGA_LOG_EXPORT_TARGET: ${KIONGA_LOG_EXPORT_TARGET:-}
       KIONGA_LOG_EXPORT_URL: ${KIONGA_LOG_EXPORT_URL:-}
@@ -370,8 +370,8 @@ services:
     environment:
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       S3_ENDPOINT: http://objectstore:9000
-      S3_ACCESS_KEY: mlaiops
-      S3_SECRET_KEY: mlaiops-local-secret
+      S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${STORAGE_PROXY_PORT:-8084}:8084"]
 
   langfuse:
@@ -380,7 +380,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgresql://mlaiops:mlaiops-local@postgres:5432/langfuse
+      DATABASE_URL: postgresql://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/langfuse
       NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mlaiops-local-nextauth}
       SALT: ${LANGFUSE_SALT:-mlaiops-local-salt}
@@ -424,8 +424,8 @@ services:
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       DOCKER_HOST: unix:///var/run/docker.sock
       MLAIOPS_PIPELINE_NETWORK: mlaiops_default
       MLAIOPS_PIPELINE_LOG_LIMIT_BYTES: ${MLAIOPS_PIPELINE_LOG_LIMIT_BYTES:-65536}
@@ -458,8 +458,8 @@ services:
       PLATFORM_NETWORK: mlaiops_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${SERVING_MANAGER_PORT:-8085}:8085"]
 
   realtime-processor:
@@ -535,7 +535,7 @@ services:
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       MLAIOPS_AGENT_ID: ${MLAIOPS_AGENT_ID:-}
       MLAIOPS_URL: http://gateway:8080
-      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
       # mock by default: the stack works with zero API keys. Set
       # MLAIOPS_LLM_BACKEND=openai (plus OPENAI_API_KEY) or anthropic for real
       # models; calls egress through the trace-proxy.
@@ -609,14 +609,14 @@ services:
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       S3_ENDPOINT: http://objectstore:9000
       S3_MOUNT_ROOT: /workspace/object-store
       S3_MOUNT_BUCKETS: mlaiops-models mlaiops-artifacts mlaiops-features mlaiops-traces mlaiops-agents mlaiops-pipeline-logs
       KAFKA_REST_URL: http://kafka-rest:8082
       PREFECT_API_URL: http://prefect-server:4200/api
-      DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
+      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
       REDIS_URL: redis://redis:6379
       LANGFUSE_HOST: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
@@ -664,8 +664,8 @@ services:
       MLAIOPS_URL: http://127.0.0.1:8890
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
     expose: ["8080"]
     volumes:
       - jupyter-data:/workspace

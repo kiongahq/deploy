@@ -7,6 +7,43 @@
 name: mlaiops
 
 services:
+  # Refuses to start the public stack with a missing setting or a credential
+  # equal to a local default (scripts/public-preflight.sh, also run by
+  # public-up.sh). Interpolation fails `config` and `up` when a value is unset;
+  # the script rejects known defaults. Every service that serves traffic or
+  # initializes state with a credential waits for it to succeed.
+  public-preflight:
+    image: caddy:2.8
+    restart: "no"
+    entrypoint: [/bin/sh, /kionga/public-preflight.sh]
+    volumes:
+      - ./scripts/public-preflight.sh:/kionga/public-preflight.sh:ro
+    environment:
+      MLAIOPS_DOMAIN: ${MLAIOPS_DOMAIN:?set MLAIOPS_DOMAIN in .env}
+      MLAIOPS_ACME_EMAIL: ${MLAIOPS_ACME_EMAIL:?set MLAIOPS_ACME_EMAIL in .env}
+      DEX_ADMIN_EMAIL: ${DEX_ADMIN_EMAIL:?set DEX_ADMIN_EMAIL in .env}
+      DEX_ADMIN_PASSWORD_HASH: ${DEX_ADMIN_PASSWORD_HASH:?set DEX_ADMIN_PASSWORD_HASH in .env}
+      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:?set MLAIOPS_INTERNAL_TOKEN in .env (see .env.example)}
+      MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:?set MLAIOPS_LOCAL_PASSWORD in .env (see .env.example)}
+      DEX_CLIENT_SECRET: ${DEX_CLIENT_SECRET:?set DEX_CLIENT_SECRET in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+      OBJECTSTORE_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:?set OBJECTSTORE_ACCESS_KEY in .env (see .env.example)}
+      OBJECTSTORE_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:?set OBJECTSTORE_SECRET_KEY in .env (see .env.example)}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?set LANGFUSE_PUBLIC_KEY in .env (see .env.example)}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?set LANGFUSE_SECRET_KEY in .env (see .env.example)}
+      LANGFUSE_NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?set LANGFUSE_NEXTAUTH_SECRET in .env (see .env.example)}
+      LANGFUSE_SALT: ${LANGFUSE_SALT:?set LANGFUSE_SALT in .env (see .env.example)}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?set LANGFUSE_INIT_USER_PASSWORD in .env (see .env.example)}
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:?set JUPYTER_TOKEN in .env (see .env.example)}
+      IDE_PASSWORD: ${IDE_PASSWORD:?set IDE_PASSWORD in .env (see .env.example)}
+      KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:?set KIONGA_WORKSPACE_JOB_TOKEN in .env (see .env.example)}
+      KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:?set KIONGA_WORKSPACE_API_TOKEN in .env (see .env.example)}
+      KIONGA_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:?set KIONGA_DESIGNER_RUNNER_TOKEN in .env (see .env.example)}
+      LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:?set LANGFLOW_SUPERUSER_PASSWORD in .env (see .env.example)}
+      LANGFLOW_SECRET_KEY: ${LANGFLOW_SECRET_KEY:?set LANGFLOW_SECRET_KEY in .env (see .env.example)}
+      KIONGA_SSO_LDAP: ${KIONGA_SSO_LDAP:-false}
+      DEX_LDAP_BIND_PASSWORD: ${DEX_LDAP_BIND_PASSWORD:-}
+
   caddy:
     image: caddy:2.8
     restart: unless-stopped
@@ -20,6 +57,7 @@ services:
       - caddy-config:/config
     depends_on:
       gateway: {condition: service_started}
+      public-preflight: {condition: service_completed_successfully}
 
   # The same Dex as locally (compose.yaml, sso/dex.yaml), served at
   # https://$MLAIOPS_DOMAIN/dex: Dex's own email + password admin account and
@@ -29,6 +67,8 @@ services:
     profiles: [local-directory]
   dex:
     restart: unless-stopped
+    depends_on:
+      public-preflight: {condition: service_completed_successfully}
     environment:
       DEX_ISSUER: https://${MLAIOPS_DOMAIN}/dex
       KIONGA_GATEWAY_URL: https://${MLAIOPS_DOMAIN}
@@ -39,10 +79,15 @@ services:
       # bcrypt hash of the admin password; generate with:
       #   docker run --rm httpd:2.4-alpine htpasswd -bnBC 10 "" 'your-password' | tr -d ':\n'
       DEX_ADMIN_PASSWORD_HASH: ${DEX_ADMIN_PASSWORD_HASH:?set DEX_ADMIN_PASSWORD_HASH in .env}
+      # Read only when KIONGA_SSO_LDAP=true; the local test directory's bind
+      # password never reaches a public Dex.
+      DEX_LDAP_BIND_PASSWORD: ${DEX_LDAP_BIND_PASSWORD:-}
     ports: !reset []
 
   gateway:
     restart: unless-stopped
+    depends_on:
+      public-preflight: {condition: service_completed_successfully}
     environment:
       # Same Dex client as locally; the browser reaches Dex through Caddy.
       OIDC_ISSUER: https://${MLAIOPS_DOMAIN}/dex
@@ -58,14 +103,16 @@ services:
   # Internal services keep running exactly as locally, restarted on failure.
   # Data services stay on the internal network: Caddy (80/443) is the only
   # published port on a public VM.
-  postgres: {restart: unless-stopped, ports: !reset []}
+  postgres: {restart: unless-stopped, ports: !reset [], depends_on: {public-preflight: {condition: service_completed_successfully}}}
   redis: {restart: unless-stopped, ports: !reset []}
   kafka: {restart: unless-stopped, ports: !reset []}
   kafka-rest: {restart: unless-stopped, ports: !reset []}
-  objectstore: {restart: unless-stopped, ports: !reset []}
+  objectstore: {restart: unless-stopped, ports: !reset [], depends_on: {public-preflight: {condition: service_completed_successfully}}}
   mlflow: {restart: unless-stopped, ports: !reset []}
   langfuse:
     restart: unless-stopped
+    depends_on:
+      public-preflight: {condition: service_completed_successfully}
     ports: !reset []
     environment:
       NEXTAUTH_URL: https://${MLAIOPS_DOMAIN}/langfuse
@@ -93,7 +140,7 @@ services:
   prefect-server: {restart: unless-stopped, ports: !reset []}
   # The workbench stays private on the VM; reach it over an SSH tunnel:
   #   ssh -L 8888:localhost:8888 <vm>  (after re-publishing the port locally)
-  jupyter: {restart: unless-stopped, ports: !reset []}
+  jupyter: {restart: unless-stopped, ports: !reset [], depends_on: {public-preflight: {condition: service_completed_successfully}}}
   pipeline-runner:
     environment:
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}

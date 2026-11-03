@@ -19,12 +19,9 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 set -a; source .env; set +a
-for required in MLAIOPS_DOMAIN MLAIOPS_ACME_EMAIL DEX_CLIENT_SECRET DEX_ADMIN_EMAIL DEX_ADMIN_PASSWORD_HASH MLAIOPS_INTERNAL_TOKEN; do
-  if [[ -z "${!required:-}" ]]; then
-    echo "error: $required is not set in .env" >&2
-    exit 1
-  fi
-done
+# Every required setting is present and no credential is a local default.
+# The public-preflight service in compose.public.yaml runs the same script.
+sh scripts/public-preflight.sh
 
 compose=(docker compose -f compose.yaml -f compose.public.yaml)
 
