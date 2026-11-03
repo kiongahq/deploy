@@ -91,7 +91,13 @@ components:
     port: 8081
     health: /healthz
     ready: /healthz
-    secrets: []
+    # Create key TRACE_PROXY_KEYS in secretNames.trace-proxy: a JSON array of
+    # {key_id, key_sha256, project, agent}. Only hashes are stored; the proxy does
+    # not start without it. For a hosted provider, also create key
+    # LLM_UPSTREAM_API_KEY and set this list to
+    # [TRACE_PROXY_KEYS, LLM_UPSTREAM_API_KEY]; set config.LLM_UPSTREAM_AUTH_HEADER
+    # and config.LLM_UPSTREAM_AUTH_SCHEME when it does not use Authorization: Bearer.
+    secrets: [TRACE_PROXY_KEYS]
 resources:
   requests: {cpu: 100m, memory: 128Mi}
   limits: {cpu: "1", memory: 512Mi}
@@ -117,10 +123,11 @@ gatewayAutoscaling:
   maxReplicas: 10
   cpuPercent: 70
 # Native Agent Designer playground and evaluation runner. Off by default. To
-# enable it, create the Secret named by secretName with key
+# enable it, create the Secret named by secretName with keys
 # KIONGA_DESIGNER_RUNNER_TOKEN (32+ random characters, or through
-# externalSecrets.targets); the gateway and the runner both mount it. Model
-# calls go through the release's trace-proxy.
+# externalSecrets.targets), which the gateway and the runner both mount, and
+# TRACE_PROXY_PROJECT_KEY, a project key whose hash is in the trace-proxy's
+# TRACE_PROXY_KEYS. Model calls go through the release's trace-proxy.
 agentDesigner:
   enabled: false
   replicas: 2
