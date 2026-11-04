@@ -37,7 +37,7 @@ url="https://storage.googleapis.com/gvisor/releases/release/$RELEASE/$arch/gviso
 if ((DRY_RUN)); then
   printf 'would download %s\n' "$url"
   printf 'would verify SHA-512 %s\n' "$expected"
-  printf 'would install %s to %s\n' "${BINARIES[*]}" "$BIN_DIR"
+  printf 'would install %s and gvisor-bin/ to %s\n' "${BINARIES[*]}" "$BIN_DIR"
   printf 'would run %s/runsc install and reload Docker\n' "$BIN_DIR"
   exit 0
 fi
@@ -51,9 +51,14 @@ trap 'rm -rf "$work"' EXIT
 curl --fail --silent --show-error --location --output "$work/gvisor.tar.bz2" "$url"
 # A failed check stops the script before anything is unpacked or installed.
 (cd "$work" && printf '%s  gvisor.tar.bz2\n' "$expected" | sha512sum --check --quiet -) || fail "checksum mismatch for $url; nothing was installed"
-# Only these two names leave the archive.
+# Only these names leave the archive. runsc executes the sidecar binaries in
+# gvisor-bin/ and looks for that directory next to itself, so they move together.
 mkdir "$work/unpacked"
-tar -xjf "$work/gvisor.tar.bz2" -C "$work/unpacked" --no-same-owner "${BINARIES[@]}"
+tar -xjf "$work/gvisor.tar.bz2" -C "$work/unpacked" --no-same-owner "${BINARIES[@]}" gvisor-bin
+install -d -m 0755 "$BIN_DIR/gvisor-bin"
+for file in "$work"/unpacked/gvisor-bin/*; do
+  install -m 0755 "$file" "$BIN_DIR/gvisor-bin/$(basename "$file")"
+done
 for file in "${BINARIES[@]}"; do
   install -m 0755 "$work/unpacked/$file" "$BIN_DIR/$file"
 done

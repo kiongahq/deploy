@@ -420,14 +420,15 @@ while [ $# -gt 0 ]; do [ "$1" = --output ] && cp "{tmp_path}/gvisor.tar.bz2" "$2
 
 
 def archive(tmp_path):
-    """A release-shaped archive: fake binaries, an extra directory, and its digest."""
+    """A release-shaped archive with a file that must stay behind, and its digest."""
     source = tmp_path / "release"
     (source / "gvisor-bin").mkdir(parents=True)
-    (source / "gvisor-bin" / "extra").write_text("not installed")
+    (source / "gvisor-bin" / "gvisor_sentry").write_text("#!/bin/sh\n")
+    (source / "LICENSE").write_text("not installed")
     (source / "containerd-shim-runsc-v1").write_text("#!/bin/sh\n")
     (source / "runsc").write_text(f'#!/bin/sh\necho "$@" >>"{tmp_path}/runsc-calls"\n')
     target = tmp_path / "gvisor.tar.bz2"
-    subprocess.run(["tar", "-cjf", str(target), "-C", str(source), "runsc", "containerd-shim-runsc-v1", "gvisor-bin"], check=True)
+    subprocess.run(["tar", "-cjf", str(target), "-C", str(source), "runsc", "containerd-shim-runsc-v1", "gvisor-bin", "LICENSE"], check=True)
     return hashlib.sha512(target.read_bytes()).hexdigest()
 
 
@@ -477,14 +478,16 @@ def test_install_requires_root_before_downloading(tmp_path):
 
 
 @pytest.mark.skipif(not shutil.which("bzip2"), reason="bzip2 is required")
-def test_install_unpacks_only_the_two_binaries_after_the_checksum(tmp_path):
+def test_install_puts_the_binaries_and_their_sidecars_together(tmp_path):
     digest = archive(tmp_path)
     bin_dir = tmp_path / "installed"
     bin_dir.mkdir()
     result = run_script(tmp_path, uid="0", env={"KIONGA_RUNSC_SHA512": digest, "KIONGA_RUNSC_BIN_DIR": str(bin_dir)})
     assert result.returncode == 0, result.stderr
-    assert sorted(path.name for path in bin_dir.iterdir()) == ["containerd-shim-runsc-v1", "runsc"]
+    assert sorted(path.name for path in bin_dir.iterdir()) == ["containerd-shim-runsc-v1", "gvisor-bin", "runsc"]
     assert os.access(bin_dir / "runsc", os.X_OK)
+    # runsc looks for gvisor-bin/ beside itself, and every user may need to run it.
+    assert (bin_dir / "gvisor-bin" / "gvisor_sentry").stat().st_mode & 0o777 == 0o755
     assert (tmp_path / "runsc-calls").read_text().strip() == "install"
     assert (tmp_path / "systemctl").read_text().strip() == "reload docker"
     assert (tmp_path / "urls").read_text().strip().endswith("/release/20261026.0/x86_64/gvisor.tar.bz2")

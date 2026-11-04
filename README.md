@@ -113,8 +113,8 @@ of the stack does not depend on this service.
 
 On a Linux host, `sudo make sandbox-runtime-install` is an optional way to install
 `runsc` and register it with Docker. It downloads gVisor's release archive, checks
-it against a SHA-512 pinned in `scripts/install-runsc.sh`, and installs the two
-binaries. Nothing else runs it. `make sandbox-runtime-verify` starts a container and
+it against a SHA-512 pinned in `scripts/install-runsc.sh`, and installs `runsc`, the
+containerd shim and the `gvisor-bin/` directory `runsc` needs beside it. Nothing else runs it. `make sandbox-runtime-verify` starts a container and
 reads its kernel log. An engine's runtime list is not proof: Podman lists `runsc`
 even when it is not installed.
 
