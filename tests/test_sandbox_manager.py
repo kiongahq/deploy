@@ -644,6 +644,17 @@ echo 4.19.0-gvisor
     assert run.startswith("--runtime runsc run --rm --pull never --network none ")
 
 
+def test_a_remote_podman_client_gets_a_clear_message(tmp_path):
+    # What real Podman 6.1 on macOS prints.
+    (tmp_path / "bin").mkdir()
+    stub = tmp_path / "bin" / "podman"
+    stub.write_text('#!/bin/sh\n[ "$1" = image ] && exit 0\necho "Error: unknown flag: --runtime"\nexit 125\n')
+    stub.chmod(0o755)
+    result = subprocess.run(["bash", str(ROOT / "scripts/check-sandbox-runtime.sh")], capture_output=True, text=True, timeout=20,
+                            env={"PATH": f"{tmp_path}/bin:/usr/bin:/bin", "KIONGA_ENGINE": "podman"})
+    assert result.returncode == 1 and "Run this check on the Linux host" in result.stderr
+
+
 def test_probe_image_is_pinned_by_a_multi_architecture_digest(tmp_path):
     probe(tmp_path, "gVisor")
     run = (tmp_path / "probe-args").read_text().splitlines()[-1]

@@ -65,6 +65,11 @@ if ((status == 124)); then
   printf 'error: a container under %s did not finish within %s seconds.\n' "$RUNTIME" "$RUN_SECONDS" >&2
   exit 1
 fi
+if ((status != 0)) && grep -q 'unknown flag: --runtime' "$work/output"; then
+  # The Podman client on macOS and Windows talks to a VM and has no runtime flag.
+  printf 'error: this Podman client cannot choose a runtime, so it cannot run the probe. Run this check on the Linux host.\n' >&2
+  exit 1
+fi
 if ((status != 0)); then
   printf 'error: a container failed to start under %s. %s\n%s\n' "$RUNTIME" "$HELP" "$(cat "$work/output")" >&2
   exit 1
