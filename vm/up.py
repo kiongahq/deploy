@@ -29,10 +29,17 @@ TEAM_TUNING = {"turn_timeout_seconds": "KIONGA_AGENT_TURN_TIMEOUT_SECONDS",
                "worker_pool": "KIONGA_TEAM_WORKER_POOL",
                "sandbox_retention_seconds": "KIONGA_TEAM_SANDBOX_RETENTION_SECONDS",
                "trace_proxy_write_timeout_seconds": "TRACE_PROXY_WRITE_TIMEOUT_SECONDS"}
-REFERENCE_KEYS = {"files", "knowledge_allowlist", "connection_allowlist"}
-REFERENCE_PREFIXES = ("KIONGA_KB_SECRET_", "KIONGA_CONNECTION_SECRET_")
-REFERENCE_NAMES = ("KIONGA_QDRANT_KEY", "KIONGA_KNOWLEDGE_DSN", "KIONGA_AGENT_API_TOKEN")
-REFERENCE_SETTINGS = ("KIONGA_KB_SECRET_REFS", "KIONGA_CONNECTION_SECRET_REFS")
+# The rules in platform's runtimeconfig/secret_refs.go; a test compares them.
+REFERENCE_ALLOWLISTS = {"knowledge_allowlist": "KIONGA_KB_SECRET_REFS", "connection_allowlist": "KIONGA_CONNECTION_SECRET_REFS",
+                        "feature_allowlist": "KIONGA_FEATURE_SECRET_REFS", "storage_allowlist": "KIONGA_STORAGE_SECRET_REFS",
+                        "platform_allowlist": "KIONGA_PLATFORM_SECRET_REFS"}
+REFERENCE_KEYS = {"files", *REFERENCE_ALLOWLISTS}
+REFERENCE_PREFIXES = ("KIONGA_KB_SECRET_", "KIONGA_CONNECTION_SECRET_", "KIONGA_FEATURE_SECRET_",
+                      "KIONGA_STORAGE_SECRET_", "KIONGA_PLATFORM_SECRET_")
+REFERENCE_NAMES = ("KIONGA_QDRANT_KEY", "KIONGA_KNOWLEDGE_DSN", "KIONGA_AGENT_API_TOKEN", "FEAST_TOKEN", "LAKE_CREDENTIALS")
+# Gateway secrets that a platform connection of the matching type may use. They can
+# be delivered as files, but never allowlisted.
+REFERENCE_EXEMPT = ("OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN")
 # Mirrors runtimeconfig.SecretNames in platform; the gateway refuses these too. A test
 # compares the two when platform is checked out beside this repository.
 GATEWAY_OWN_SECRETS = ("DATABASE_URL", "OIDC_CLIENT_SECRET", "MLAIOPS_INTERNAL_TOKEN", "KIONGA_CREDENTIAL_KEY",
@@ -180,37 +187,39 @@ def compose_command(deployment):
 
 
 def reference_settings(data):
-    """Validated secret_references block as (files, knowledge allowlist, connection allowlist)."""
+    """Validated secret_references block as (files, {allowlist setting: names})."""
     block = data.get("secret_references", {})
     if not isinstance(block, dict) or set(block) - REFERENCE_KEYS:
         raise ValueError(f"secret_references accepts only: {', '.join(sorted(REFERENCE_KEYS))}")
-    lists = [block.get(key, []) for key in ("files", "knowledge_allowlist", "connection_allowlist")]
-    own = {*GATEWAY_OWN_SECRETS, *TEAM_SECRETS, *REFERENCE_SETTINGS}
-    for names in lists:
+    own = {*GATEWAY_OWN_SECRETS, *TEAM_SECRETS, *REFERENCE_ALLOWLISTS.values()}
+    files = block.get("files", [])
+    allowlists = {key: block.get(key, []) for key in REFERENCE_ALLOWLISTS}
+    for key, names in (("files", files), *allowlists.items()):
         if not isinstance(names, list) or not all(re.fullmatch(r"[A-Z][A-Z0-9_]*", str(name)) for name in names):
             raise ValueError("secret_references entries must be environment variable names")
-        if own & set(names):
-            raise ValueError(f"secret_references cannot name {', '.join(sorted(own & set(names)))}")
-    files, knowledge, connection = lists
+        refused = own & set(names) - (set(REFERENCE_EXEMPT) if key == "files" else set())
+        refused |= {name for name in names if name.endswith("_FILE")}
+        if refused:
+            raise ValueError(f"secret_references cannot name {', '.join(sorted(refused))}")
+    listed = {name for names in allowlists.values() for name in names}
     for name in files:
-        if not (name.startswith(REFERENCE_PREFIXES) or name in REFERENCE_NAMES or name in knowledge or name in connection):
-            raise ValueError(f"secret_references.files: {name} needs a KIONGA_KB_SECRET_ or "
-                             "KIONGA_CONNECTION_SECRET_ prefix, or an entry in an allowlist")
-    return files, knowledge, connection
+        if not (name.startswith(REFERENCE_PREFIXES) or name in REFERENCE_NAMES or name in REFERENCE_EXEMPT or name in listed):
+            raise ValueError(f"secret_references.files: {name} needs a scope prefix such as "
+                             "KIONGA_KB_SECRET_, or an entry in an allowlist")
+    return files, allowlists
 
 
 def reference_overlay(data):
     """Write a Compose file that gives the gateway these secret files, and return its path.
     The names are only known here, and the file holds names and paths, never a value."""
-    files, knowledge, connection = reference_settings(data)
-    if not (files or knowledge or connection):
+    files, allowlists = reference_settings(data)
+    if not (files or any(allowlists.values())):
         return None
     directory = Path(data["secrets_directory"]).resolve(strict=True)
     environment = {f"{name}_FILE": f"/run/secrets/{name}" for name in files}
-    if knowledge:
-        environment["KIONGA_KB_SECRET_REFS"] = ",".join(knowledge)
-    if connection:
-        environment["KIONGA_CONNECTION_SECRET_REFS"] = ",".join(connection)
+    for key, names in allowlists.items():
+        if names:
+            environment[REFERENCE_ALLOWLISTS[key]] = ",".join(names)
     overlay = {"services": {"gateway": {"environment": environment}}}
     if files:
         overlay["services"]["gateway"]["secrets"] = list(files)

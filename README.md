@@ -133,11 +133,12 @@ the sandbox. Do not use it with untrusted input. The manager refuses it when
 
 ### Secret references
 
-Knowledge bases and API connections name their credential as `env:NAME`. The gateway
-resolves a name only with the resource's prefix (`KIONGA_KB_SECRET_*` or
-`KIONGA_CONNECTION_SECRET_*`), or one of `KIONGA_QDRANT_KEY`, `KIONGA_KNOWLEDGE_DSN`
-and `KIONGA_AGENT_API_TOKEN`, or a name in `KIONGA_KB_SECRET_REFS` or
-`KIONGA_CONNECTION_SECRET_REFS`.
+Knowledge bases, API connections, feature stores, storage connections and platform
+connections name their credential as `env:NAME`. Each has its own scope, and one
+cannot read another's variables. The gateway resolves a name only with the scope's
+prefix (`KIONGA_KB_SECRET_*`, `KIONGA_CONNECTION_SECRET_*`, `KIONGA_FEATURE_SECRET_*`,
+`KIONGA_STORAGE_SECRET_*` or `KIONGA_PLATFORM_SECRET_*`), a name the scope keeps, or a
+name in the scope's `*_SECRET_REFS` allowlist.
 
 | Path | Where the values go |
 | --- | --- |

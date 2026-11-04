@@ -405,8 +405,28 @@ def test_allowlists_become_the_gateway_settings(tmp_path):
     assert gateway["OLD_QDRANT_FILE"] == "/run/secrets/OLD_QDRANT"
 
 
+def test_every_scope_reaches_the_gateway_as_a_file(tmp_path):
+    names = ["KIONGA_FEATURE_SECRET_F", "KIONGA_STORAGE_SECRET_S", "KIONGA_PLATFORM_SECRET_P",
+             "FEAST_TOKEN", "LAKE_CREDENTIALS", "OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN"]
+    path = with_references(tmp_path, {"files": names}, write=names)
+    vm.deployment_environment(path)
+    gateway = rendered(path)["services"]["gateway"]["environment"]
+    for name in names:
+        assert gateway[f"{name}_FILE"] == f"/run/secrets/{name}"
+
+
+def test_every_allowlist_becomes_its_gateway_setting(tmp_path):
+    block = {key: ["OLD_" + key.split("_")[0].upper()] for key in vm.REFERENCE_ALLOWLISTS}
+    gateway = rendered(with_references(tmp_path, block))["services"]["gateway"]["environment"]
+    for key, variable in vm.REFERENCE_ALLOWLISTS.items():
+        assert gateway[variable] == block[key][0]
+
+
 @pytest.mark.parametrize("references,message", [
-    ({"files": ["FEAST_TOKEN"]}, "needs a KIONGA_KB_SECRET_"),
+    ({"files": ["OTHER_TOKEN"]}, "needs a scope prefix"),
+    ({"platform_allowlist": ["OPENFAAS_PASSWORD"]}, "cannot name OPENFAAS_PASSWORD"),
+    ({"feature_allowlist": ["KIONGA_STORAGE_SECRET_REFS"]}, "cannot name KIONGA_STORAGE_SECRET_REFS"),
+    ({"files": ["KIONGA_KB_SECRET_X_FILE"]}, "cannot name KIONGA_KB_SECRET_X_FILE"),
     ({"files": ["DATABASE_URL"], "knowledge_allowlist": ["DATABASE_URL"]}, "cannot name DATABASE_URL"),
     ({"connection_allowlist": ["MLAIOPS_INTERNAL_TOKEN"]}, "cannot name MLAIOPS_INTERNAL_TOKEN"),
     ({"connection_allowlist": ["KIONGA_SANDBOX_TOKEN"]}, "cannot name KIONGA_SANDBOX_TOKEN"),
@@ -443,12 +463,17 @@ def test_refused_names_cover_the_gateway_secret_list():
     assert set(re.findall(r'"([A-Z0-9_]+)"', names)) <= set(vm.GATEWAY_OWN_SECRETS)
 
 
-def test_platform_loads_file_references_once_the_loader_exists():
-    # Without this the gateway resolves a file-delivered reference to an empty value.
-    config = ROOT.parent / "platform" / "go" / "internal/runtimeconfig/config.go"
-    if not config.is_file() or "KIONGA_KB_SECRET_" not in config.read_text():
-        pytest.skip("the prefix file loader is not in this platform checkout yet")
-    assert "KIONGA_CONNECTION_SECRET_" in config.read_text()
+def test_reference_rules_match_platform_once_they_exist():
+    rules = ROOT.parent / "platform" / "go" / "internal/runtimeconfig/secret_refs.go"
+    if not rules.is_file():
+        pytest.skip("the reference rules are not in this platform checkout yet")
+    text = rules.read_text()
+    assert set(re.findall(r'Prefix:\s*"([A-Z_]+)"', text)) | set(re.findall(r'Prefix: "([A-Z_]+)"', text)) == set(vm.REFERENCE_PREFIXES)
+    assert set(re.findall(r'Allowlist:\s*"([A-Z_]+)"', text)) == set(vm.REFERENCE_ALLOWLISTS.values())
+    names = {name for block in re.findall(r"Names:\s*\[\]string\{(.*?)\}", text) for name in re.findall(r'"([A-Z_]+)"', block)}
+    assert names == set(vm.REFERENCE_NAMES)
+    assert set(re.findall(r'scope\.Exempt = "([A-Z_]+)"', text)) == set(vm.REFERENCE_EXEMPT)
+    assert "loadReferenceFiles" in text
 
 
 class Calls:

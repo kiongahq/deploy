@@ -401,13 +401,17 @@ TEAM_VARIABLES = ("KIONGA_AGENT_TURN_TIMEOUT_SECONDS", "KIONGA_TEAM_COMPACT_THRE
                   "KIONGA_TEAM_SANDBOX_RETENTION_SECONDS", "KIONGA_TEAM_SCHEDULER")
 
 
+ALLOWLISTS = ("KIONGA_KB_SECRET_REFS", "KIONGA_CONNECTION_SECRET_REFS", "KIONGA_FEATURE_SECRET_REFS",
+              "KIONGA_STORAGE_SECRET_REFS", "KIONGA_PLATFORM_SECRET_REFS")
+
+
 def gateway_env(docs):
     return find(docs, "Deployment", "kionga-gateway")["spec"]["template"]["spec"]["containers"][0]["env"]
 
 
 def test_compose_passes_every_team_setting_with_no_default():
     gateway = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]["gateway"]["environment"]
-    for name in (*TEAM_VARIABLES, "KIONGA_KB_SECRET_REFS", "KIONGA_CONNECTION_SECRET_REFS"):
+    for name in (*TEAM_VARIABLES, *ALLOWLISTS):
         assert gateway[name] == "${%s:-}" % name
     assert gateway["KIONGA_AGENT_DESIGNER_RUNNER_URL"] and gateway["KIONGA_AGENT_DESIGNER_RUNNER_TOKEN"]
 
@@ -417,14 +421,17 @@ def test_prefixed_references_reach_only_the_local_gateway(local):
     path = ROOT / "config/secrets/gateway.env"
     assert not path.exists(), "remove your own gateway.env to run this test"
     try:
-        path.write_text("KIONGA_KB_SECRET_DOCS=kb-value\nKIONGA_CONNECTION_SECRET_GITHUB=git-value\n")
+        path.write_text("KIONGA_KB_SECRET_DOCS=kb-value\nKIONGA_CONNECTION_SECRET_GITHUB=git-value\n"
+                        "KIONGA_FEATURE_SECRET_F=f-value\nKIONGA_STORAGE_SECRET_S=s-value\nKIONGA_PLATFORM_SECRET_P=p-value\n")
         services = compose_config("compose.yaml")
     finally:
         path.unlink()
     assert services["gateway"]["environment"]["KIONGA_KB_SECRET_DOCS"] == "kb-value"
     assert services["gateway"]["environment"]["KIONGA_CONNECTION_SECRET_GITHUB"] == "git-value"
-    others = {name: service for name, service in services.items() if name != "gateway"}
-    assert "kb-value" not in str(others) and "git-value" not in str(others)
+    for name, value in (("FEATURE_SECRET_F", "f-value"), ("STORAGE_SECRET_S", "s-value"), ("PLATFORM_SECRET_P", "p-value")):
+        assert services["gateway"]["environment"]["KIONGA_" + name] == value
+    others = str({name: service for name, service in services.items() if name != "gateway"})
+    assert not [value for value in ("kb-value", "git-value", "f-value", "s-value", "p-value") if value in others]
 
 
 def test_trace_proxy_write_timeout_is_passed_with_no_default():
@@ -443,7 +450,7 @@ def test_reference_file_is_ignored_by_git():
 
 def test_chart_sets_no_team_tuning_or_references_by_default(tmp_path):
     names = {item["name"] for item in gateway_env(render_chart(tmp_path))}
-    assert not names & {*TEAM_VARIABLES, "KIONGA_KB_SECRET_REFS", "KIONGA_CONNECTION_SECRET_REFS"}
+    assert not names & {*TEAM_VARIABLES, *ALLOWLISTS}
 
 
 def test_chart_passes_team_tuning_to_the_gateway_only(tmp_path):
@@ -468,7 +475,28 @@ def test_chart_refuses_gateway_owned_names_even_when_allowlisted(tmp_path, field
 
 
 def references(**overrides):
-    return {"secretName": "refs", "names": [], "knowledgeAllowlist": [], "connectionAllowlist": [], **overrides}
+    return {"secretName": "refs", "names": [], "knowledgeAllowlist": [], "connectionAllowlist": [], "featureAllowlist": [],
+            "storageAllowlist": [], "platformAllowlist": [], **overrides}
+
+
+@pytest.mark.parametrize("name", ["KIONGA_FEATURE_SECRET_F", "KIONGA_STORAGE_SECRET_S", "KIONGA_PLATFORM_SECRET_P", "FEAST_TOKEN",
+                                  "LAKE_CREDENTIALS", "OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN"])
+def test_chart_delivers_every_scope(tmp_path, name):
+    env = {item["name"]: item for item in gateway_env(render_chart(tmp_path, secretReferences=references(names=[name])))}
+    assert env[name]["valueFrom"] == {"secretKeyRef": {"name": "refs", "key": name}}
+
+
+@pytest.mark.parametrize("field,variable", [("featureAllowlist", "KIONGA_FEATURE_SECRET_REFS"), ("storageAllowlist", "KIONGA_STORAGE_SECRET_REFS"),
+                                            ("platformAllowlist", "KIONGA_PLATFORM_SECRET_REFS")])
+def test_chart_passes_every_allowlist(tmp_path, field, variable):
+    env = {item["name"]: item for item in gateway_env(render_chart(tmp_path, secretReferences=references(**{field: ["OLD_NAME"]})))}
+    assert env[variable]["value"] == "OLD_NAME"
+
+
+@pytest.mark.parametrize("name", ["OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN"])
+def test_chart_never_allowlists_a_by_type_gateway_secret(tmp_path, name):
+    with pytest.raises(AssertionError, match=f"cannot name {name}"):
+        render_chart(tmp_path, secretReferences=references(platformAllowlist=[name]))
 
 
 def test_chart_reads_references_from_the_secret_for_the_gateway_only(tmp_path):
@@ -481,9 +509,9 @@ def test_chart_reads_references_from_the_secret_for_the_gateway_only(tmp_path):
     assert "KIONGA_KB_SECRET_DOCS" not in str(others)
 
 
-@pytest.mark.parametrize("name", ["FEAST_TOKEN", "OLD_API"])
+@pytest.mark.parametrize("name", ["OTHER_TOKEN", "OLD_API"])
 def test_chart_refuses_a_reference_without_a_permitted_name(tmp_path, name):
-    with pytest.raises(AssertionError, match="needs a KIONGA_KB_SECRET_"):
+    with pytest.raises(AssertionError, match="needs a scope prefix"):
         render_chart(tmp_path, secretReferences=references(names=[name]))
 
 

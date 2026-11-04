@@ -184,16 +184,21 @@ agentTeams:
   workerPool: ""
   sandboxRetentionSeconds: ""
   scheduler: ""
-# Credentials that knowledge bases and API connections reference as env:NAME. Create
-# secretName with one key per name below; the gateway reads each through secretKeyRef.
-# names: KIONGA_KB_SECRET_*, KIONGA_CONNECTION_SECRET_*, KIONGA_QDRANT_KEY,
-# KIONGA_KNOWLEDGE_DSN, KIONGA_AGENT_API_TOKEN, or a name in an allowlist.
-# knowledgeAllowlist and connectionAllowlist keep a stored reference under another name.
+# Credentials that knowledge bases, API connections, feature stores, storage
+# connections and platform connections reference as env:NAME. Create secretName with
+# one key per name below; the gateway reads each through secretKeyRef.
+# names: KIONGA_{KB,CONNECTION,FEATURE,STORAGE,PLATFORM}_SECRET_*, KIONGA_QDRANT_KEY,
+# KIONGA_KNOWLEDGE_DSN, KIONGA_AGENT_API_TOKEN, FEAST_TOKEN, LAKE_CREDENTIALS,
+# OPENFAAS_PASSWORD, MLFLOW_TOKEN, KFP_TOKEN, or a name in an allowlist.
+# The allowlists keep a stored reference under another name.
 secretReferences:
   secretName: kionga-secret-references
   names: []
   knowledgeAllowlist: []
   connectionAllowlist: []
+  featureAllowlist: []
+  storageAllowlist: []
+  platformAllowlist: []
 networkPolicy:
   enabled: true
   # Explicit destination CIDRs/ports for DB, IdP, Kafka REST, engines, object

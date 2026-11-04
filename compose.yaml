@@ -258,6 +258,9 @@ services:
       # The values themselves go in config/secrets/gateway.env, below.
       KIONGA_KB_SECRET_REFS: ${KIONGA_KB_SECRET_REFS:-}
       KIONGA_CONNECTION_SECRET_REFS: ${KIONGA_CONNECTION_SECRET_REFS:-}
+      KIONGA_FEATURE_SECRET_REFS: ${KIONGA_FEATURE_SECRET_REFS:-}
+      KIONGA_STORAGE_SECRET_REFS: ${KIONGA_STORAGE_SECRET_REFS:-}
+      KIONGA_PLATFORM_SECRET_REFS: ${KIONGA_PLATFORM_SECRET_REFS:-}
       # Agent team tuning. Empty uses the gateway's default.
       KIONGA_AGENT_TURN_TIMEOUT_SECONDS: ${KIONGA_AGENT_TURN_TIMEOUT_SECONDS:-}
       KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS: ${KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS:-}
@@ -318,8 +321,8 @@ services:
       KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
       KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
-    # KIONGA_KB_SECRET_* and KIONGA_CONNECTION_SECRET_* values have no fixed names, so
-    # they cannot be listed above. Git ignores this file; it may not exist.
+    # KIONGA_{KB,CONNECTION,FEATURE,STORAGE,PLATFORM}_SECRET_* values have no fixed
+    # names, so they cannot be listed above. Git ignores this file; it may not exist.
     env_file:
       - {path: ./config/secrets/gateway.env, required: false}
     volumes:

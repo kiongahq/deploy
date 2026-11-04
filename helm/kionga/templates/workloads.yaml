@@ -111,19 +111,21 @@ spec:
             {{- with $.Values.secretReferences }}
             {{- $refs := . }}
             {{- /* The gateway refuses these at resolve time; stop here rather than overwrite one. */ -}}
-            {{- $own := list "DATABASE_URL" "OIDC_CLIENT_SECRET" "MLAIOPS_INTERNAL_TOKEN" "KIONGA_CREDENTIAL_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "REDIS_URL" "KAFKA_REST_TOKEN" "KFP_TOKEN" "MLFLOW_TOKEN" "OPENFAAS_PASSWORD" "LANGFUSE_SECRET_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "LLM_UPSTREAM_API_KEY" "KIONGA_JUPYTER_TOKEN" "KIONGA_IDE_PASSWORD" "TRACE_SINK_TOKEN" "MLAIOPS_LOCAL_PASSWORD" "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN" "KIONGA_DESIGNER_RUNNER_TOKEN" "KIONGA_SANDBOX_TOKEN" "KIONGA_KB_SECRET_REFS" "KIONGA_CONNECTION_SECRET_REFS" }}
-            {{- range concat .names .knowledgeAllowlist .connectionAllowlist }}
+            {{- $exempt := list "OPENFAAS_PASSWORD" "MLFLOW_TOKEN" "KFP_TOKEN" }}
+            {{- $own := concat $exempt (list "DATABASE_URL" "OIDC_CLIENT_SECRET" "MLAIOPS_INTERNAL_TOKEN" "KIONGA_CREDENTIAL_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "REDIS_URL" "KAFKA_REST_TOKEN" "LANGFUSE_SECRET_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "LLM_UPSTREAM_API_KEY" "KIONGA_JUPYTER_TOKEN" "KIONGA_IDE_PASSWORD" "TRACE_SINK_TOKEN" "MLAIOPS_LOCAL_PASSWORD" "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN" "KIONGA_DESIGNER_RUNNER_TOKEN" "KIONGA_SANDBOX_TOKEN" "KIONGA_KB_SECRET_REFS" "KIONGA_CONNECTION_SECRET_REFS" "KIONGA_FEATURE_SECRET_REFS" "KIONGA_STORAGE_SECRET_REFS" "KIONGA_PLATFORM_SECRET_REFS") }}
+            {{- $allowed := concat .knowledgeAllowlist .connectionAllowlist .featureAllowlist .storageAllowlist .platformAllowlist }}
+            {{- range $allowed }}
             {{- if has . $own }}{{ fail (printf "secretReferences cannot name %s" .) }}{{ end }}
             {{- end }}
-            {{- if .knowledgeAllowlist }}
-            - {name: KIONGA_KB_SECRET_REFS, value: {{ join "," .knowledgeAllowlist | quote }}}
+            {{- range $name, $list := dict "KIONGA_KB_SECRET_REFS" .knowledgeAllowlist "KIONGA_CONNECTION_SECRET_REFS" .connectionAllowlist "KIONGA_FEATURE_SECRET_REFS" .featureAllowlist "KIONGA_STORAGE_SECRET_REFS" .storageAllowlist "KIONGA_PLATFORM_SECRET_REFS" .platformAllowlist }}
+            {{- if $list }}
+            - {name: {{ $name }}, value: {{ join "," $list | quote }}}
             {{- end }}
-            {{- if .connectionAllowlist }}
-            - {name: KIONGA_CONNECTION_SECRET_REFS, value: {{ join "," .connectionAllowlist | quote }}}
             {{- end }}
             {{- range .names }}
-            {{- if not (or (hasPrefix "KIONGA_KB_SECRET_" .) (hasPrefix "KIONGA_CONNECTION_SECRET_" .) (has . (list "KIONGA_QDRANT_KEY" "KIONGA_KNOWLEDGE_DSN" "KIONGA_AGENT_API_TOKEN")) (has . $refs.knowledgeAllowlist) (has . $refs.connectionAllowlist)) }}
-            {{- fail (printf "secretReferences.names: %s needs a KIONGA_KB_SECRET_ or KIONGA_CONNECTION_SECRET_ prefix, or an allowlist entry" .) }}
+            {{- if and (has . $own) (not (has . $exempt)) }}{{ fail (printf "secretReferences cannot name %s" .) }}{{ end }}
+            {{- if not (or (hasPrefix "KIONGA_KB_SECRET_" .) (hasPrefix "KIONGA_CONNECTION_SECRET_" .) (hasPrefix "KIONGA_FEATURE_SECRET_" .) (hasPrefix "KIONGA_STORAGE_SECRET_" .) (hasPrefix "KIONGA_PLATFORM_SECRET_" .) (has . $exempt) (has . (list "KIONGA_QDRANT_KEY" "KIONGA_KNOWLEDGE_DSN" "KIONGA_AGENT_API_TOKEN" "FEAST_TOKEN" "LAKE_CREDENTIALS")) (has . $allowed)) }}
+            {{- fail (printf "secretReferences.names: %s needs a scope prefix such as KIONGA_KB_SECRET_, or an allowlist entry" .) }}
             {{- end }}
             - name: {{ . }}
               valueFrom: {secretKeyRef: {name: {{ $refs.secretName }}, key: {{ . }}}}

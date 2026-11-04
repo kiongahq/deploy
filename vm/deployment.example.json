@@ -8,7 +8,10 @@
   "secret_references": {
     "files": [],
     "knowledge_allowlist": [],
-    "connection_allowlist": []
+    "connection_allowlist": [],
+    "feature_allowlist": [],
+    "storage_allowlist": [],
+    "platform_allowlist": []
   },
   "agent_teams": {
     "enabled": false,
