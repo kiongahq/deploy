@@ -272,6 +272,8 @@ services:
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-}
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
+      # Shared Compose runtime authenticates with this value under its legacy name.
+      KIONGA_AGENT_RUNTIME_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       # Native Agent Designer playground and evaluations run in the isolated
       # runner; it calls back on the internal listener with a run credential.
       KIONGA_AGENT_DESIGNER_RUNNER_URL: http://agent-designer-runner:9100

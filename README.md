@@ -191,3 +191,15 @@ runs and the commit conventions.
 ## License
 
 [MIT](LICENCE) © Kionga contributors
+
+### Shared agent runtime authentication
+
+Compose gives the gateway `KIONGA_AGENT_RUNTIME_TOKEN` with the same value as
+the shared agent runtime's `MLAIOPS_INTERNAL_TOKEN`. Set `MLAIOPS_INTERNAL_TOKEN`
+in `.env` for both; public mode requires a non-development value. After rotating
+it, recreate both `gateway` and `agent-runtime`. This wiring requires
+kiongahq/platform#118.
+
+The Compose runtime is shared and does not isolate credentials between agents.
+On Kubernetes, the operator creates a separate runtime Secret in each agent's
+namespace; the gateway reads that agent's Secret when invoking it.
