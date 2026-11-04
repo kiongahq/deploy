@@ -61,12 +61,15 @@ def test_only_the_engine_control_services_mount_the_socket(local, public):
 
 def test_manager_is_on_an_internal_network_with_no_published_port(local):
     manager = local["sandbox-manager"]
-    assert set(manager["networks"]) == {"sandbox"}
+    assert set(manager["networks"]) == {"sandbox", "sandbox-egress"}
     assert not manager.get("ports")
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
     assert compose["networks"]["sandbox"]["internal"] is True
     members = {name for name, service in local.items() if "sandbox" in (service.get("networks") or {})}
     assert members == {"gateway", "sandbox-manager"}, "only the gateway may reach the manager"
+    assert not compose["networks"]["sandbox-egress"].get("internal"), "the manager resolves git hosts itself"
+    alone = {name for name, service in local.items() if "sandbox-egress" in (service.get("networks") or {})}
+    assert alone == {"sandbox-manager"}, "no other service may share this network"
 
 
 def test_gateway_stays_on_the_default_network_and_does_not_wait_for_the_manager(local):
@@ -208,14 +211,14 @@ def test_public_up_stops_when_the_probe_fails_even_if_the_engine_lists_runsc(tmp
 
 
 def test_public_up_stops_when_the_probe_runs_a_normal_kernel(tmp_path):
-    result = public_up(tmp_path, "echo 'Linux version 6.8.0'; exit 0")
+    result = public_up(tmp_path, "echo 6.8.0-generic; exit 0")
     assert result.returncode != 0
     assert "does not mention gVisor" in result.stderr
     assert "docker-called compose" not in result.stderr
 
 
 def test_public_up_continues_after_a_real_gvisor_container(tmp_path):
-    result = public_up(tmp_path, "echo '[0.0] Starting gVisor...'; exit 0")
+    result = public_up(tmp_path, "echo 4.19.0-gvisor; exit 0")
     assert "A container ran under gVisor" in result.stdout
     assert "docker-called compose" in result.stderr
 
@@ -334,9 +337,7 @@ def test_sandbox_pods_have_no_allowance_only_labelled_git_helpers_do(tmp_path):
 
 def test_git_helper_cannot_reach_internal_ranges_metadata_or_the_api_server(tmp_path):
     docs = render_chart(tmp_path, sandbox=enabled())
-    dns, web = find(docs, "NetworkPolicy", "kionga-sandbox-git-helper")["spec"]["egress"]
-    assert {port["port"] for port in dns["ports"]} == {53}
-    assert dns["to"][0]["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "kube-system"}
+    [web] = find(docs, "NetworkPolicy", "kionga-sandbox-git-helper")["spec"]["egress"]  # no DNS: addresses are pinned
     assert web["ports"] == [{"port": 443, "protocol": "TCP"}]
     block = web["to"][0]["ipBlock"]
     assert block["cidr"] == "0.0.0.0/0"
@@ -358,6 +359,8 @@ def test_manager_reaches_only_dns_and_the_api_server_and_only_the_gateway_reache
     dns, api = policy["egress"]
     assert {port["port"] for port in dns["ports"]} == {53}
     assert api["to"] == [{"ipBlock": {"cidr": "192.0.2.10/32"}}]
+    without_git = find(render_chart(tmp_path, sandbox=enabled(gitHosts=[])), "NetworkPolicy", MANAGER)["spec"]["egress"]
+    assert [rule["to"] for rule in without_git] == [api["to"]], "no DNS unless the manager has git hosts to resolve"
     control = find(docs, "NetworkPolicy", "kionga-control")["spec"]
     assert any(rule.get("ports") == [{"port": 8088}] for rule in control["egress"])
 
@@ -389,6 +392,94 @@ def test_runtime_class_is_optional_and_uses_the_handler(tmp_path):
     assert not [d for d in render_chart(tmp_path, sandbox=enabled()) if d["kind"] == "RuntimeClass"]
     [runtime] = [d for d in render_chart(tmp_path, sandbox=enabled(createRuntimeClass=True)) if d["kind"] == "RuntimeClass"]
     assert runtime["metadata"]["name"] == "gvisor" and runtime["handler"] == "runsc"
+
+
+# Gateway settings for agent teams and secret references
+
+
+TEAM_VARIABLES = ("KIONGA_AGENT_TURN_TIMEOUT_SECONDS", "KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS", "KIONGA_TEAM_WORKER_POOL",
+                  "KIONGA_TEAM_SANDBOX_RETENTION_SECONDS", "KIONGA_TEAM_SCHEDULER")
+
+
+def gateway_env(docs):
+    return find(docs, "Deployment", "kionga-gateway")["spec"]["template"]["spec"]["containers"][0]["env"]
+
+
+def test_compose_passes_every_team_setting_with_no_default():
+    gateway = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]["gateway"]["environment"]
+    for name in (*TEAM_VARIABLES, "KIONGA_KB_SECRET_REFS", "KIONGA_CONNECTION_SECRET_REFS"):
+        assert gateway[name] == "${%s:-}" % name
+    assert gateway["KIONGA_AGENT_DESIGNER_RUNNER_URL"] and gateway["KIONGA_AGENT_DESIGNER_RUNNER_TOKEN"]
+
+
+def test_prefixed_references_reach_only_the_local_gateway(local):
+    # The file is optional and ignored by Git; compose_config reads the real one.
+    path = ROOT / "config/secrets/gateway.env"
+    assert not path.exists(), "remove your own gateway.env to run this test"
+    try:
+        path.write_text("KIONGA_KB_SECRET_DOCS=kb-value\nKIONGA_CONNECTION_SECRET_GITHUB=git-value\n")
+        services = compose_config("compose.yaml")
+    finally:
+        path.unlink()
+    assert services["gateway"]["environment"]["KIONGA_KB_SECRET_DOCS"] == "kb-value"
+    assert services["gateway"]["environment"]["KIONGA_CONNECTION_SECRET_GITHUB"] == "git-value"
+    others = {name: service for name, service in services.items() if name != "gateway"}
+    assert "kb-value" not in str(others) and "git-value" not in str(others)
+
+
+def test_local_stack_starts_without_the_reference_file(local):
+    assert "KIONGA_KB_SECRET_DOCS" not in local["gateway"]["environment"]
+
+
+def test_reference_file_is_ignored_by_git():
+    result = subprocess.run(["git", "check-ignore", "config/secrets/gateway.env"], cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0
+
+
+def test_chart_sets_no_team_tuning_or_references_by_default(tmp_path):
+    names = {item["name"] for item in gateway_env(render_chart(tmp_path))}
+    assert not names & {*TEAM_VARIABLES, "KIONGA_KB_SECRET_REFS", "KIONGA_CONNECTION_SECRET_REFS"}
+
+
+def test_chart_passes_team_tuning_to_the_gateway_only(tmp_path):
+    docs = render_chart(tmp_path, agentTeams={"turnTimeoutSeconds": 300, "compactThresholdTokens": 200000, "workerPool": 8,
+                                              "sandboxRetentionSeconds": 3600, "scheduler": "off"})
+    env = {item["name"]: item.get("value") for item in gateway_env(docs)}
+    assert [env[name] for name in TEAM_VARIABLES] == ["300", "200000", "8", "3600", "off"]
+    others = [d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] != "kionga-gateway"]
+    assert "KIONGA_TEAM_WORKER_POOL" not in str(others)
+
+
+def test_chart_refuses_another_scheduler_value(tmp_path):
+    with pytest.raises(AssertionError, match="can only be off"):
+        render_chart(tmp_path, agentTeams={"scheduler": "on"})
+
+
+@pytest.mark.parametrize("field", ["names", "knowledgeAllowlist", "connectionAllowlist"])
+@pytest.mark.parametrize("name", ["DATABASE_URL", "KIONGA_SANDBOX_TOKEN", "KIONGA_KB_SECRET_REFS"])
+def test_chart_refuses_gateway_owned_names_even_when_allowlisted(tmp_path, field, name):
+    with pytest.raises(AssertionError, match=f"cannot name {name}"):
+        render_chart(tmp_path, secretReferences=references(**{field: [name]}))
+
+
+def references(**overrides):
+    return {"secretName": "refs", "names": [], "knowledgeAllowlist": [], "connectionAllowlist": [], **overrides}
+
+
+def test_chart_reads_references_from_the_secret_for_the_gateway_only(tmp_path):
+    docs = render_chart(tmp_path, secretReferences=references(names=["KIONGA_KB_SECRET_DOCS", "OLD_API"], connectionAllowlist=["OLD_API"]))
+    env = {item["name"]: item for item in gateway_env(docs)}
+    assert env["KIONGA_KB_SECRET_DOCS"]["valueFrom"] == {"secretKeyRef": {"name": "refs", "key": "KIONGA_KB_SECRET_DOCS"}}
+    assert env["OLD_API"]["valueFrom"] == {"secretKeyRef": {"name": "refs", "key": "OLD_API"}}
+    assert env["KIONGA_CONNECTION_SECRET_REFS"]["value"] == "OLD_API"
+    others = [d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] != "kionga-gateway"]
+    assert "KIONGA_KB_SECRET_DOCS" not in str(others)
+
+
+@pytest.mark.parametrize("name", ["FEAST_TOKEN", "OLD_API"])
+def test_chart_refuses_a_reference_without_a_permitted_name(tmp_path, name):
+    with pytest.raises(AssertionError, match="needs a KIONGA_KB_SECRET_"):
+        render_chart(tmp_path, secretReferences=references(names=[name]))
 
 
 # Optional runtime install
@@ -530,20 +621,37 @@ exit {status}
 
 
 def test_verify_starts_a_container_with_no_network_under_runsc(tmp_path):
-    assert probe(tmp_path, "[    0.000000] Starting gVisor...").returncode == 0
+    assert probe(tmp_path, "4.19.0-gvisor").returncode == 0
     run = (tmp_path / "probe-args").read_text().splitlines()[-1]
-    assert run.startswith("run --rm --pull never --network none --runtime runsc ") and run.endswith(" dmesg")
+    assert run.startswith("run --rm --pull never --network none --runtime runsc ") and run.endswith(" uname -r")
     assert "info" not in (tmp_path / "probe-args").read_text().split(), "a runtime list proves nothing on Podman"
+
+
+def test_podman_gets_the_runtime_before_the_subcommand(tmp_path):
+    # Found against real Podman: `podman run --runtime` fails with "unknown flag".
+    (tmp_path / "bin").mkdir()
+    stub = tmp_path / "bin" / "podman"
+    stub.write_text(f"""#!/bin/sh
+echo "$@" >>"{tmp_path}/args"
+[ "$1" = image ] && exit 0
+echo 4.19.0-gvisor
+""")
+    stub.chmod(0o755)
+    result = subprocess.run(["bash", str(ROOT / "scripts/check-sandbox-runtime.sh")], capture_output=True, text=True, timeout=20,
+                            env={"PATH": f"{tmp_path}/bin:/usr/bin:/bin", "KIONGA_ENGINE": "podman"})
+    assert result.returncode == 0, result.stderr
+    run = (tmp_path / "args").read_text().splitlines()[-1]
+    assert run.startswith("--runtime runsc run --rm --pull never --network none ")
 
 
 def test_probe_image_is_pinned_by_a_multi_architecture_digest(tmp_path):
     probe(tmp_path, "gVisor")
     run = (tmp_path / "probe-args").read_text().splitlines()[-1]
-    assert re.search(r" busybox:1\.37@sha256:[a-f0-9]{64} dmesg$", run)
+    assert re.search(r" busybox:1\.37@sha256:[a-f0-9]{64} uname -r$", run)
 
 
 def test_verify_requires_the_gvisor_kernel_banner(tmp_path):
-    fake = probe(tmp_path, "Linux version 6.8.0")
+    fake = probe(tmp_path, "6.8.0-generic")
     assert fake.returncode == 1 and "does not mention gVisor" in fake.stderr
     failed = probe(tmp_path, "unknown runtime", 125)
     assert failed.returncode == 1 and "failed to start" in failed.stderr

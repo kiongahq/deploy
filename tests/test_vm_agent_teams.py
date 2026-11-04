@@ -84,6 +84,20 @@ def test_teams_without_sandboxes_add_only_the_runner_and_proxy(tmp_path):
     assert "KIONGA_SANDBOX_URL" not in services["gateway"]["environment"]
 
 
+def test_only_the_manager_gets_an_egress_network_and_only_with_git_hosts(tmp_path):
+    path, _ = inputs(tmp_path, enabled())
+    assert files(vm.compose_command(path))[-1] == "compose.sandbox-egress.yaml"
+    config = rendered(path)
+    alone = {name for name, service in config["services"].items() if "sandbox-egress" in service["networks"]}
+    assert alone == {"sandbox-manager"}
+    assert not config["networks"]["sandbox-egress"].get("internal")
+    teams = enabled()
+    teams["sandbox"]["git_hosts"] = []
+    path, _ = inputs(tmp_path / "none" if (tmp_path / "none").mkdir() is None else tmp_path, teams)
+    assert "compose.sandbox-egress.yaml" not in files(vm.compose_command(path))
+    assert set(rendered(path)["services"]["sandbox-manager"]["networks"]) == {"sandbox"}
+
+
 def test_the_runner_reaches_the_gateway_and_models_only_through_the_proxy(tmp_path):
     path, _ = inputs(tmp_path, enabled())
     config = rendered(path)
@@ -308,6 +322,131 @@ def test_platform_accepts_both_token_forms_once_the_manager_exists():
     assert "runtimeconfig.Load()" in (platform / "cmd/gateway/main.go").read_text()
 
 
+TUNING = {"turn_timeout_seconds": 300, "compact_threshold_tokens": 200000, "worker_pool": 8,
+          "sandbox_retention_seconds": 3600, "scheduler": "off"}
+
+
+def test_team_tuning_reaches_the_gateway_as_variables(tmp_path):
+    teams = enabled(sandbox=False)
+    teams["tuning"] = TUNING
+    path, _ = inputs(tmp_path, teams)
+    gateway = rendered(path)["services"]["gateway"]["environment"]
+    assert gateway["KIONGA_AGENT_TURN_TIMEOUT_SECONDS"] == "300"
+    assert gateway["KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS"] == "200000"
+    assert gateway["KIONGA_TEAM_WORKER_POOL"] == "8"
+    assert gateway["KIONGA_TEAM_SANDBOX_RETENTION_SECONDS"] == "3600"
+    assert gateway["KIONGA_TEAM_SCHEDULER"] == "off"
+
+
+def test_team_tuning_is_empty_unless_set(tmp_path):
+    path, _ = inputs(tmp_path, enabled(sandbox=False))
+    gateway = rendered(path)["services"]["gateway"]["environment"]
+    for variable in (*vm.TEAM_TUNING.values(), "KIONGA_TEAM_SCHEDULER"):
+        assert gateway[variable] == "", "the gateway treats empty as its default"
+
+
+@pytest.mark.parametrize("tuning,message", [
+    ({"worker_pool": 0}, "positive whole number"),
+    ({"worker_pool": "8"}, "positive whole number"),
+    ({"worker_pool": True}, "positive whole number"),
+    ({"scheduler": "on"}, "can only be off"),
+    ({"allow_unsafe": True}, "accepts only"),
+])
+def test_bad_tuning_is_refused(tmp_path, tuning, message):
+    teams = enabled(sandbox=False)
+    teams["tuning"] = tuning
+    path, _ = inputs(tmp_path, teams)
+    with pytest.raises(ValueError, match=message):
+        vm.deployment_environment(path)
+
+
+def with_references(tmp_path, references, write=()):
+    path, data = inputs(tmp_path)
+    data["secret_references"] = references
+    path.write_text(json.dumps(data))
+    for name in write:
+        secret = Path(data["secrets_directory"]) / name
+        secret.write_text("reference-value\n")
+        secret.chmod(0o640)
+    return path
+
+
+def test_no_references_add_no_compose_file(tmp_path):
+    path = with_references(tmp_path, {"files": [], "knowledge_allowlist": [], "connection_allowlist": []})
+    assert files(vm.compose_command(path)) == ["compose.yaml"]
+
+
+def test_reference_files_reach_only_the_gateway_as_file_secrets(tmp_path):
+    names = ["KIONGA_KB_SECRET_DOCS", "KIONGA_CONNECTION_SECRET_GITHUB", "KIONGA_QDRANT_KEY"]
+    path = with_references(tmp_path, {"files": names}, write=names)
+    vm.deployment_environment(path)
+    command = vm.compose_command(path)
+    assert "reference-value" not in Path(command[-1]).read_text(), "the overlay holds names and paths only"
+    config = rendered(path)
+    gateway, caddy = config["services"]["gateway"], config["services"]["caddy"]
+    for name in names:
+        assert gateway["environment"][f"{name}_FILE"] == f"/run/secrets/{name}"
+        assert name not in gateway["environment"]
+    assert {s["source"] for s in gateway["secrets"]} >= set(names)
+    assert "secrets" not in caddy
+    assert "reference-value" not in json.dumps(config)
+
+
+def test_allowlists_become_the_gateway_settings(tmp_path):
+    path = with_references(tmp_path, {"files": ["OLD_QDRANT"], "knowledge_allowlist": ["OLD_QDRANT", "OTHER"],
+                                      "connection_allowlist": ["OLD_API"]}, write=["OLD_QDRANT"])
+    gateway = rendered(path)["services"]["gateway"]["environment"]
+    assert gateway["KIONGA_KB_SECRET_REFS"] == "OLD_QDRANT,OTHER"
+    assert gateway["KIONGA_CONNECTION_SECRET_REFS"] == "OLD_API"
+    assert gateway["OLD_QDRANT_FILE"] == "/run/secrets/OLD_QDRANT"
+
+
+@pytest.mark.parametrize("references,message", [
+    ({"files": ["FEAST_TOKEN"]}, "needs a KIONGA_KB_SECRET_"),
+    ({"files": ["DATABASE_URL"], "knowledge_allowlist": ["DATABASE_URL"]}, "cannot name DATABASE_URL"),
+    ({"connection_allowlist": ["MLAIOPS_INTERNAL_TOKEN"]}, "cannot name MLAIOPS_INTERNAL_TOKEN"),
+    ({"connection_allowlist": ["KIONGA_SANDBOX_TOKEN"]}, "cannot name KIONGA_SANDBOX_TOKEN"),
+    ({"knowledge_allowlist": ["KIONGA_KB_SECRET_REFS"]}, "cannot name KIONGA_KB_SECRET_REFS"),
+    ({"files": ["KIONGA_CONNECTION_SECRET_REFS"]}, "cannot name KIONGA_CONNECTION_SECRET_REFS"),
+    ({"knowledge_allowlist": ["S3_SECRET_KEY"]}, "cannot name S3_SECRET_KEY"),
+    ({"files": ["bad name"]}, "environment variable names"),
+    ({"other": []}, "accepts only"),
+])
+def test_bad_references_are_refused(tmp_path, references, message):
+    path = with_references(tmp_path, references)
+    with pytest.raises(ValueError, match=message):
+        vm.deployment_environment(path)
+
+
+def test_a_reference_file_is_checked_like_every_secret(tmp_path):
+    name = "KIONGA_KB_SECRET_DOCS"
+    path = with_references(tmp_path, {"files": [name]})
+    with pytest.raises(ValueError, match=f"missing or empty secret file: {name}"):
+        vm.deployment_environment(path)
+    data = json.loads(path.read_text())
+    secret = Path(data["secrets_directory"]) / name
+    secret.write_text("reference-value")
+    secret.chmod(0o644)
+    with pytest.raises(ValueError, match="world-accessible"):
+        vm.deployment_environment(path)
+
+
+def test_refused_names_cover_the_gateway_secret_list():
+    config = ROOT.parent / "platform" / "go" / "internal/runtimeconfig/config.go"
+    if not config.is_file():
+        pytest.skip("platform is not checked out beside this repository")
+    names = re.search(r"SecretNames = \[\]string\{(.*?)\}", config.read_text()).group(1)
+    assert set(re.findall(r'"([A-Z0-9_]+)"', names)) <= set(vm.GATEWAY_OWN_SECRETS)
+
+
+def test_platform_loads_file_references_once_the_loader_exists():
+    # Without this the gateway resolves a file-delivered reference to an empty value.
+    config = ROOT.parent / "platform" / "go" / "internal/runtimeconfig/config.go"
+    if not config.is_file() or "KIONGA_KB_SECRET_" not in config.read_text():
+        pytest.skip("the prefix file loader is not in this platform checkout yet")
+    assert "KIONGA_CONNECTION_SECRET_" in config.read_text()
+
+
 class Calls:
     """Records every command main() runs, and can fail one by matching text."""
 
@@ -352,7 +491,7 @@ def test_a_real_probe_runs_before_anything_is_pulled_or_started(tmp_path, monkey
     calls = Calls(monkeypatch)
     run_main(monkeypatch, path)
     probe = calls.index("check-sandbox-runtime.sh")
-    assert probe < calls.index("compose.sandbox.yaml pull") < calls.index("docker pull registry/sandbox") < calls.index(" up -d")
+    assert probe < calls.index(".yaml pull") < calls.index("docker pull registry/sandbox") < calls.index(" up -d")
 
 
 def test_a_failed_probe_starts_nothing(tmp_path, monkeypatch):

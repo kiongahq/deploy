@@ -63,7 +63,8 @@ spec:
   policyTypes: [Ingress, Egress]
 {{- if $s.gitHosts }}
 ---
-# Only the manager can set this label: pods cannot be labelled from inside, the
+# The manager checks each host and pins its addresses into the helper, so helpers need
+# no DNS. Only the manager can set this label: pods cannot be labelled from inside, the
 # Role below is bound to the manager alone and has no update or patch on pods, and
 # sandbox pods have neither a service account token nor a route to the API server.
 apiVersion: networking.k8s.io/v1
@@ -76,10 +77,6 @@ spec:
     matchLabels: {kionga.dev/sandbox-role: git-helper}
   policyTypes: [Egress]
   egress:
-    - to:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: kube-system}
-      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -261,10 +258,13 @@ spec:
             matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: gateway}
       ports: [{port: 8088}]
   egress:
+    {{- if $s.gitHosts }}
+    # To resolve the allowed git hosts itself. Nothing else in the path needs DNS.
     - to:
         - namespaceSelector:
             matchLabels: {kubernetes.io/metadata.name: kube-system}
       ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    {{- end }}
     - to:
         {{- range $s.kubernetesApiCidrs }}
         - ipBlock: {cidr: {{ . }}}

@@ -116,7 +116,7 @@ On a Linux host, `sudo make sandbox-runtime-install` is an optional way to insta
 `runsc` and register it with Docker. It downloads gVisor's release archive, checks
 it against a SHA-512 pinned in `scripts/install-runsc.sh`, and installs `runsc`, the
 containerd shim and the `gvisor-bin/` directory `runsc` needs beside it. Nothing else runs it. `make sandbox-runtime-verify` starts a container and
-reads its kernel log. An engine's runtime list is not proof: Podman lists `runsc`
+reads its kernel release. An engine's runtime list is not proof: Podman lists `runsc`
 even when it is not installed.
 
 For development on a machine without gVisor, you can opt in to a weaker runtime by
@@ -130,6 +130,22 @@ KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME=1
 This shares the host kernel with code the model wrote, so a kernel exploit escapes
 the sandbox. Do not use it with untrusted input. The manager refuses it when
 `KIONGA_ENVIRONMENT=production` and logs a warning on every create.
+
+### Secret references
+
+Knowledge bases and API connections name their credential as `env:NAME`. The gateway
+resolves a name only with the resource's prefix (`KIONGA_KB_SECRET_*` or
+`KIONGA_CONNECTION_SECRET_*`), or one of `KIONGA_QDRANT_KEY`, `KIONGA_KNOWLEDGE_DSN`
+and `KIONGA_AGENT_API_TOKEN`, or a name in `KIONGA_KB_SECRET_REFS` or
+`KIONGA_CONNECTION_SECRET_REFS`.
+
+| Path | Where the values go |
+| --- | --- |
+| Single server | Files in `secrets_directory`, listed in `secret_references` in `deployment.json` |
+| Helm | One key per name in the Secret `secretReferences.secretName`, listed in `secretReferences.names` |
+| Local Compose | `config/secrets/gateway.env`, one `NAME=value` per line |
+
+The single-server path needs a gateway image with kiongahq/platform#111.
 
 ### Operating systems and engine choice
 

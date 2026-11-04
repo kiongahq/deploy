@@ -4,7 +4,8 @@
 #
 # Only a real container proves it. An engine's runtime list does not: Podman lists
 # runsc even when the binary is not installed. So this starts a throwaway container
-# with no network and reads its kernel log, which gVisor's kernel writes itself.
+# with no network and reads its kernel release, which gVisor's kernel reports itself
+# (such as 4.19.0-gvisor).
 #
 # The default image is a multi-architecture index, pinned by digest: the one digest
 # covers amd64 and arm64. Every step has a deadline, so a host without network gets
@@ -50,8 +51,16 @@ if ! bash "$ROOT/scripts/container.sh" image inspect "$PROBE_IMAGE" >/dev/null 2
   fi
 fi
 
+# Podman takes --runtime before the subcommand, and Docker after it.
+engine="${KIONGA_ENGINE:-}"
+[[ -n "$engine" || ! -f "$ROOT/.local-state/container-engine" ]] || engine="$(cat "$ROOT/.local-state/container-engine")"
+if [[ "$engine" == podman ]]; then
+  probe=(--runtime "$RUNTIME" run --rm --pull never --network none)
+else
+  probe=(run --rm --pull never --network none --runtime "$RUNTIME")
+fi
 status=0
-engine_within "$RUN_SECONDS" run --rm --pull never --network none --runtime "$RUNTIME" "$PROBE_IMAGE" dmesg || status=$?
+engine_within "$RUN_SECONDS" "${probe[@]}" "$PROBE_IMAGE" uname -r || status=$?
 if ((status == 124)); then
   printf 'error: a container under %s did not finish within %s seconds.\n' "$RUNTIME" "$RUN_SECONDS" >&2
   exit 1
@@ -61,7 +70,7 @@ if ((status != 0)); then
   exit 1
 fi
 if ! grep -qi gvisor "$work/output"; then
-  printf 'error: the container started, but its kernel log does not mention gVisor. %s\n' "$HELP" >&2
+  printf 'error: the container started, but its kernel release does not mention gVisor. %s\n' "$HELP" >&2
   exit 1
 fi
 printf 'A container ran under gVisor.\n'

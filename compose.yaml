@@ -254,6 +254,16 @@ services:
       KIONGA_QDRANT_KEY: ${KIONGA_QDRANT_KEY:-}
       KIONGA_KNOWLEDGE_DSN: ${KIONGA_KNOWLEDGE_DSN:-}
       KIONGA_AGENT_API_TOKEN: ${KIONGA_AGENT_API_TOKEN:-}
+      # Extra names a knowledge base or API connection may reference, comma-separated.
+      # The values themselves go in config/secrets/gateway.env, below.
+      KIONGA_KB_SECRET_REFS: ${KIONGA_KB_SECRET_REFS:-}
+      KIONGA_CONNECTION_SECRET_REFS: ${KIONGA_CONNECTION_SECRET_REFS:-}
+      # Agent team tuning. Empty uses the gateway's default.
+      KIONGA_AGENT_TURN_TIMEOUT_SECONDS: ${KIONGA_AGENT_TURN_TIMEOUT_SECONDS:-}
+      KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS: ${KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS:-}
+      KIONGA_TEAM_WORKER_POOL: ${KIONGA_TEAM_WORKER_POOL:-}
+      KIONGA_TEAM_SANDBOX_RETENTION_SECONDS: ${KIONGA_TEAM_SANDBOX_RETENTION_SECONDS:-}
+      KIONGA_TEAM_SCHEDULER: ${KIONGA_TEAM_SCHEDULER:-}
       KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-}
       # Shared with jupyter and ide: authorizes structured scaffold jobs.
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-}
@@ -308,6 +318,10 @@ services:
       KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
       KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
+    # KIONGA_KB_SECRET_* and KIONGA_CONNECTION_SECRET_* values have no fixed names, so
+    # they cannot be listed above. Git ignores this file; it may not exist.
+    env_file:
+      - {path: ./config/secrets/gateway.env, required: false}
     volumes:
       - sso-providers:/etc/kionga/sso:ro
     networks: [default, sandbox]
@@ -476,8 +490,8 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${SERVING_MANAGER_PORT:-8085}:8085"]
 
   # Creates agent team sandboxes through the engine socket, the same root-equivalent
-  # trust boundary as serving-manager. It publishes no port and sits only on the
-  # internal sandbox network, so only the gateway reaches it, with a bearer token.
+  # trust boundary as serving-manager. It publishes no port, and only the gateway
+  # shares a network with it (sandbox), with a bearer token.
   # Sandboxes never get the socket. With no runsc on the engine it stays up and
   # refuses to create anything; there is no fallback to another runtime. An empty
   # KIONGA_SANDBOX_IMAGES does the same: creates return 503 until it lists an image.
@@ -493,7 +507,9 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp:size=16m]   # git bundles stream between containers, not through here
-    networks: [sandbox]
+    # sandbox-egress: the manager resolves allowed git hosts itself, and an internal
+    # network has no external DNS (checked on Podman 6.1: NXDOMAIN).
+    networks: [sandbox, sandbox-egress]
     volumes:
       - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     environment:
@@ -771,6 +787,8 @@ networks:
   # No route out of the engine: only the gateway and sandbox-manager join it.
   sandbox:
     internal: true
+  # Only sandbox-manager joins this, and it publishes no port.
+  sandbox-egress: {}
 
 volumes:
   sso-providers:

@@ -5,6 +5,11 @@
   "caddy_image": "caddy@sha256:REPLACE_WITH_VERIFIED_DIGEST",
   "config_file": "/etc/kionga/config.json",
   "secrets_directory": "/run/kionga/secrets",
+  "secret_references": {
+    "files": [],
+    "knowledge_allowlist": [],
+    "connection_allowlist": []
+  },
   "agent_teams": {
     "enabled": false,
     "agent_runtime_image": "ghcr.io/kiongahq/agent-runtime@sha256:REPLACE_WITH_RELEASE_DIGEST",

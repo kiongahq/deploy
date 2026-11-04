@@ -90,6 +90,45 @@ spec:
             - {name: KIONGA_AGENT_DESIGNER_CALLBACK_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8087/api/v1"}
             - {name: KIONGA_AGENT_DESIGNER_RUNNER_TOKEN_FILE, value: /run/designer/KIONGA_DESIGNER_RUNNER_TOKEN}
             {{- end }}
+            {{- with $.Values.agentTeams }}
+            {{- if .turnTimeoutSeconds }}
+            - {name: KIONGA_AGENT_TURN_TIMEOUT_SECONDS, value: {{ .turnTimeoutSeconds | quote }}}
+            {{- end }}
+            {{- if .compactThresholdTokens }}
+            - {name: KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS, value: {{ .compactThresholdTokens | quote }}}
+            {{- end }}
+            {{- if .workerPool }}
+            - {name: KIONGA_TEAM_WORKER_POOL, value: {{ .workerPool | quote }}}
+            {{- end }}
+            {{- if .sandboxRetentionSeconds }}
+            - {name: KIONGA_TEAM_SANDBOX_RETENTION_SECONDS, value: {{ .sandboxRetentionSeconds | quote }}}
+            {{- end }}
+            {{- if .scheduler }}
+            {{- if ne .scheduler "off" }}{{ fail "agentTeams.scheduler can only be off" }}{{ end }}
+            - {name: KIONGA_TEAM_SCHEDULER, value: "off"}
+            {{- end }}
+            {{- end }}
+            {{- with $.Values.secretReferences }}
+            {{- $refs := . }}
+            {{- /* The gateway refuses these at resolve time; stop here rather than overwrite one. */ -}}
+            {{- $own := list "DATABASE_URL" "OIDC_CLIENT_SECRET" "MLAIOPS_INTERNAL_TOKEN" "KIONGA_CREDENTIAL_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "REDIS_URL" "KAFKA_REST_TOKEN" "KFP_TOKEN" "MLFLOW_TOKEN" "OPENFAAS_PASSWORD" "LANGFUSE_SECRET_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "LLM_UPSTREAM_API_KEY" "KIONGA_JUPYTER_TOKEN" "KIONGA_IDE_PASSWORD" "TRACE_SINK_TOKEN" "MLAIOPS_LOCAL_PASSWORD" "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN" "KIONGA_DESIGNER_RUNNER_TOKEN" "KIONGA_SANDBOX_TOKEN" "KIONGA_KB_SECRET_REFS" "KIONGA_CONNECTION_SECRET_REFS" }}
+            {{- range concat .names .knowledgeAllowlist .connectionAllowlist }}
+            {{- if has . $own }}{{ fail (printf "secretReferences cannot name %s" .) }}{{ end }}
+            {{- end }}
+            {{- if .knowledgeAllowlist }}
+            - {name: KIONGA_KB_SECRET_REFS, value: {{ join "," .knowledgeAllowlist | quote }}}
+            {{- end }}
+            {{- if .connectionAllowlist }}
+            - {name: KIONGA_CONNECTION_SECRET_REFS, value: {{ join "," .connectionAllowlist | quote }}}
+            {{- end }}
+            {{- range .names }}
+            {{- if not (or (hasPrefix "KIONGA_KB_SECRET_" .) (hasPrefix "KIONGA_CONNECTION_SECRET_" .) (has . (list "KIONGA_QDRANT_KEY" "KIONGA_KNOWLEDGE_DSN" "KIONGA_AGENT_API_TOKEN")) (has . $refs.knowledgeAllowlist) (has . $refs.connectionAllowlist)) }}
+            {{- fail (printf "secretReferences.names: %s needs a KIONGA_KB_SECRET_ or KIONGA_CONNECTION_SECRET_ prefix, or an allowlist entry" .) }}
+            {{- end }}
+            - name: {{ . }}
+              valueFrom: {secretKeyRef: {name: {{ $refs.secretName }}, key: {{ . }}}}
+            {{- end }}
+            {{- end }}
             {{- if $.Values.sandbox.enabled }}
             - {name: KIONGA_SANDBOX_URL, value: "http://{{ $.Release.Name }}-sandbox-manager.{{ $.Release.Namespace }}.svc:8088"}
             - name: KIONGA_SANDBOX_TOKEN
