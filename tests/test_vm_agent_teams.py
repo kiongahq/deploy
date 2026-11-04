@@ -283,13 +283,29 @@ def test_config_example_carries_no_secret():
     assert "KIONGA_LOCAL_LOGIN" not in values
 
 
-def test_gateway_and_manager_can_load_the_token_file_once_the_manager_exists():
-    # Both read *_FILE only for names in runtimeconfig.SecretNames. Without this name
-    # the manager refuses to start and the gateway sends an empty token.
+def test_each_stack_gives_each_service_exactly_one_token_form(tmp_path):
+    # runtimeconfig.Load stops the process when a secret is set both ways.
+    path, _ = inputs(tmp_path, enabled())
+    file_form = rendered(path)["services"]
+    local = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    for service in ("gateway", "sandbox-manager"):
+        assert "KIONGA_SANDBOX_TOKEN" in local[service]["environment"]
+        assert "KIONGA_SANDBOX_TOKEN_FILE" not in local[service]["environment"]
+        assert "KIONGA_SANDBOX_TOKEN_FILE" in file_form[service]["environment"]
+        assert "KIONGA_SANDBOX_TOKEN" not in file_form[service]["environment"]
+
+
+def test_platform_accepts_both_token_forms_once_the_manager_exists():
+    # The local stack and Helm pass the value; the single server passes a file, which
+    # is read only for names in runtimeconfig.SecretNames. Without the name, the
+    # manager refuses to start and the gateway reports sandbox_unavailable.
     platform = ROOT.parent / "platform" / "go"
     if not (platform / "cmd/sandbox-manager").is_dir():
         pytest.skip("the sandbox manager is not in this platform checkout yet")
     assert '"KIONGA_SANDBOX_TOKEN"' in (platform / "internal/runtimeconfig/config.go").read_text()
+    assert 'getenv("KIONGA_SANDBOX_TOKEN")' in (platform / "internal/sandbox/config.go").read_text()
+    assert "runtimeconfig.Load()" in (platform / "cmd/sandbox-manager/main.go").read_text()
+    assert "runtimeconfig.Load()" in (platform / "cmd/gateway/main.go").read_text()
 
 
 class Calls:
