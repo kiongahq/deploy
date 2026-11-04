@@ -22,6 +22,8 @@ set -a; source .env; set +a
 # Every required setting is present and no credential is a local default.
 # The public-preflight service in compose.public.yaml runs the same script.
 sh scripts/public-preflight.sh
+# The preflight service cannot see the engine, so the host starts a probe container.
+KIONGA_ENGINE=docker bash scripts/check-sandbox-runtime.sh
 
 compose=(docker compose -f compose.yaml -f compose.public.yaml)
 

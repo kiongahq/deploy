@@ -87,8 +87,12 @@ wiring, the MLflow server, object migration and the production deploy path.
   pipeline runner and the Jupyter image.
 - **The stack resumes whole** after Docker or the host restarts
   (`restart: unless-stopped`).
-- **The Docker socket is a trust boundary.** Only `serving-manager` and
-  `pipeline-runner` mount it.
+- **The Docker socket is a trust boundary.** Only `serving-manager`,
+  `pipeline-runner` and `sandbox-manager` mount it.
+- **Sandboxes fail closed.** `sandbox-manager` runs with `runsc` or creates nothing.
+  The unsafe runtime flag is a local development opt-in. `compose.public.yaml`
+  pins it off, `scripts/public-preflight.sh` rejects it, and the chart has no value
+  for it (`tests/test_sandbox_manager.py`).
 
 ## How it connects to other components
 

@@ -41,6 +41,12 @@ services:
       KIONGA_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:?set KIONGA_DESIGNER_RUNNER_TOKEN in .env (see .env.example)}
       LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:?set LANGFLOW_SUPERUSER_PASSWORD in .env (see .env.example)}
       LANGFLOW_SECRET_KEY: ${LANGFLOW_SECRET_KEY:?set LANGFLOW_SECRET_KEY in .env (see .env.example)}
+      KIONGA_SANDBOX_TOKEN: ${KIONGA_SANDBOX_TOKEN:?set KIONGA_SANDBOX_TOKEN in .env (see .env.example)}
+      KIONGA_SANDBOX_IMAGES: ${KIONGA_SANDBOX_IMAGES:?set KIONGA_SANDBOX_IMAGES in .env (see .env.example)}
+      # Read only so the preflight can refuse them. The sandbox-manager service
+      # below pins its own values and never reads these two from .env.
+      KIONGA_SANDBOX_RUNTIME: ${KIONGA_SANDBOX_RUNTIME:-}
+      KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME: ${KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME:-}
       TRACE_PROXY_PROJECT_KEY: ${TRACE_PROXY_PROJECT_KEY:?set TRACE_PROXY_PROJECT_KEY in .env (see .env.example)}
       TRACE_PROXY_KEYS: ${TRACE_PROXY_KEYS:?set TRACE_PROXY_KEYS in .env (see .env.example)}
       SERVING_OBJECTSTORE_ACCESS_KEY: ${SERVING_OBJECTSTORE_ACCESS_KEY:?set SERVING_OBJECTSTORE_ACCESS_KEY in .env (see .env.example)}
@@ -152,6 +158,18 @@ services:
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
       AWS_ACCESS_KEY_ID: ${SERVING_OBJECTSTORE_ACCESS_KEY:?set SERVING_OBJECTSTORE_ACCESS_KEY in .env (see .env.example)}
       AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?set SERVING_OBJECTSTORE_SECRET_KEY in .env (see .env.example)}
+  # Public mode runs sandboxes under gVisor or not at all. These are literals, so
+  # no .env value can change them.
+  sandbox-manager:
+    restart: unless-stopped
+    depends_on:
+      public-preflight: {condition: service_completed_successfully}
+    environment:
+      KIONGA_ENVIRONMENT: production
+      KIONGA_SANDBOX_RUNTIME: runsc
+      KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME: ""
+      KIONGA_SANDBOX_TOKEN: ${KIONGA_SANDBOX_TOKEN:?set KIONGA_SANDBOX_TOKEN in .env (see .env.example)}
+      KIONGA_SANDBOX_IMAGES: ${KIONGA_SANDBOX_IMAGES:?set KIONGA_SANDBOX_IMAGES in .env (see .env.example)}
   prefect-server: {restart: unless-stopped, ports: !reset []}
   # The workbench stays private on the VM; reach it over an SSH tunnel:
   #   ssh -L 8888:localhost:8888 <vm>  (after re-publishing the port locally)

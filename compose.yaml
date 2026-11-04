@@ -264,6 +264,10 @@ services:
       KIONGA_AGENT_DESIGNER_RUNNER_URL: http://agent-designer-runner:9100
       KIONGA_AGENT_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:-kionga-local-designer-runner-token}
       KIONGA_AGENT_DESIGNER_CALLBACK_URL: http://gateway:8087/api/v1
+      # Agent team sandboxes. The gateway does not wait for this service: without
+      # it, sandbox tools report sandbox_unavailable and everything else works.
+      KIONGA_SANDBOX_URL: http://sandbox-manager:8088
+      KIONGA_SANDBOX_TOKEN: ${KIONGA_SANDBOX_TOKEN:-}
       STORAGE_PROXY_URL: http://storage-proxy:8084
       PREFECT_API_URL: http://prefect-server:4200/api
       SERVING_MANAGER_URL: http://serving-manager:8085
@@ -306,6 +310,7 @@ services:
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
     volumes:
       - sso-providers:/etc/kionga/sso:ro
+    networks: [default, sandbox]
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"]
 
   feature-gateway:
@@ -448,7 +453,8 @@ services:
     build:
       context: ${KIONGA_SRC:-..}/serving
     # Root inside this designated engine-control service: the Docker socket
-    # requires it. The pipeline-runner is the only other socket consumer.
+    # requires it. The pipeline-runner and sandbox-manager are the only other
+    # socket consumers.
     user: "0:0"
     volumes:
       - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
@@ -468,6 +474,42 @@ services:
     depends_on:
       objectstore-init: {condition: service_completed_successfully}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${SERVING_MANAGER_PORT:-8085}:8085"]
+
+  # Creates agent team sandboxes through the engine socket, the same root-equivalent
+  # trust boundary as serving-manager. It publishes no port and sits only on the
+  # internal sandbox network, so only the gateway reaches it, with a bearer token.
+  # Sandboxes never get the socket. With no runsc on the engine it stays up and
+  # refuses to create anything; there is no fallback to another runtime. An empty
+  # KIONGA_SANDBOX_IMAGES does the same: creates return 503 until it lists an image.
+  # To use another runtime on a development machine, see "Sandboxes" in README.md.
+  sandbox-manager:
+    restart: unless-stopped
+    build:
+      context: ${KIONGA_SRC:-..}/platform/go
+      dockerfile: Dockerfile
+      args: {SERVICE: sandbox-manager}
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=16m]   # git bundles stream between containers, not through here
+    networks: [sandbox]
+    volumes:
+      - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    environment:
+      PORT: "8088"
+      KIONGA_ENVIRONMENT: ${KIONGA_ENVIRONMENT:-development}
+      KIONGA_SANDBOX_TOKEN: ${KIONGA_SANDBOX_TOKEN:-}
+      KIONGA_SANDBOX_DRIVER: docker
+      KIONGA_SANDBOX_RUNTIME: ${KIONGA_SANDBOX_RUNTIME:-runsc}
+      KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME: ${KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME:-}
+      KIONGA_SANDBOX_IMAGES: ${KIONGA_SANDBOX_IMAGES:-}
+      KIONGA_SANDBOX_HELPER_IMAGE: ${KIONGA_SANDBOX_HELPER_IMAGE:-}
+      KIONGA_SANDBOX_GIT_HOSTS: ${KIONGA_SANDBOX_GIT_HOSTS:-}
+      KIONGA_SANDBOX_GIT_NETWORK: ${KIONGA_SANDBOX_GIT_NETWORK:-}
+      KIONGA_SANDBOX_TTL_SECONDS: ${KIONGA_SANDBOX_TTL_SECONDS:-86400}
+      # Empty: negotiate with the daemon, as serving-manager does.
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-}
 
   realtime-processor:
     build:
@@ -723,6 +765,12 @@ services:
       KIONGA_WORKSPACE_NAME: local
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
+
+networks:
+  default: {}
+  # No route out of the engine: only the gateway and sandbox-manager join it.
+  sandbox:
+    internal: true
 
 volumes:
   sso-providers:

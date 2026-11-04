@@ -90,6 +90,11 @@ spec:
             - {name: KIONGA_AGENT_DESIGNER_CALLBACK_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8087/api/v1"}
             - {name: KIONGA_AGENT_DESIGNER_RUNNER_TOKEN_FILE, value: /run/designer/KIONGA_DESIGNER_RUNNER_TOKEN}
             {{- end }}
+            {{- if $.Values.sandbox.enabled }}
+            - {name: KIONGA_SANDBOX_URL, value: "http://{{ $.Release.Name }}-sandbox-manager.{{ $.Release.Namespace }}.svc:8088"}
+            - name: KIONGA_SANDBOX_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ $.Values.sandbox.secretName }}, key: KIONGA_SANDBOX_TOKEN}}
+            {{- end }}
             {{- end }}
             {{- if and (eq $name "operator") $.Values.imagePullSecrets }}
             {{- $pullSecrets := list }}

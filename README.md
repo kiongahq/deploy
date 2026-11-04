@@ -43,8 +43,8 @@ make local-start              # cached images only: no downloads or builds
   choice is remembered in `.local-state/ports.env` so URLs stay stable. Only a
   port set in the shell for that command (`POSTGRES_PORT=… make local-up`) is
   left as given.
-- **Workspace tokens:** `JUPYTER_TOKEN`, `IDE_PASSWORD` and
-  `KIONGA_WORKSPACE_JOB_TOKEN` are random, generated once and kept in
+- **Workspace tokens:** `JUPYTER_TOKEN`, `IDE_PASSWORD`,
+  `KIONGA_WORKSPACE_JOB_TOKEN` and `KIONGA_SANDBOX_TOKEN` are random, generated once and kept in
   `.local-state/secrets.env` (mode 0600, ignored by Git) so restarts keep working.
   A value in the shell or in `.env` wins, and must be at least 32 characters.
   To rotate them, delete the file and run `make local-up` again.
@@ -95,6 +95,40 @@ Langflow is an optional agent canvas. Start it with `make langflow-up` and stop
 it with `make langflow-down`, using the same Docker or Podman engine as the
 rest of Kionga. Open **Agents → Langflow** in the console. The `langflow-data`
 volume keeps local flows across restarts.
+
+### Sandboxes
+
+Agent team sandboxes run under gVisor (`runsc`) through `sandbox-manager`, which
+holds engine socket access, publishes no port and is reachable only by the gateway
+on an internal network. `make local-up` generates `KIONGA_SANDBOX_TOKEN`. The rest
+of the stack does not depend on this service.
+
+| Machine | Result |
+| --- | --- |
+| Engine runs `runsc`, `KIONGA_SANDBOX_IMAGES` lists an image by digest | Sandboxes work |
+| `KIONGA_SANDBOX_IMAGES` empty (the local default) | The manager stays up and creates return 503 `sandbox_unavailable`; set it in `.env` |
+| Engine has no `runsc` (default on macOS and Windows) | Sandbox tools report `sandbox_unavailable`; there is no fallback |
+| Public overlay | `runsc` is pinned, `public-up.sh` stops unless a real container runs under gVisor, and the preflight rejects the unsafe flag and requires `KIONGA_SANDBOX_IMAGES` |
+| Helm | Needs a gVisor RuntimeClass; the chart has no setting for the unsafe flag |
+
+On a Linux host, `sudo make sandbox-runtime-install` is an optional way to install
+`runsc` and register it with Docker. It downloads gVisor's release archive, checks
+it against a SHA-512 pinned in `scripts/install-runsc.sh`, and installs the two
+binaries. Nothing else runs it. `make sandbox-runtime-verify` starts a container and
+reads its kernel log. An engine's runtime list is not proof: Podman lists `runsc`
+even when it is not installed.
+
+For development on a machine without gVisor, you can opt in to a weaker runtime by
+adding both lines to `.env`, then running `make local-up`:
+
+```bash
+KIONGA_SANDBOX_RUNTIME=runc
+KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME=1
+```
+
+This shares the host kernel with code the model wrote, so a kernel exploit escapes
+the sandbox. Do not use it with untrusted input. The manager refuses it when
+`KIONGA_ENVIRONMENT=production` and logs a warning on every create.
 
 ### Operating systems and engine choice
 
