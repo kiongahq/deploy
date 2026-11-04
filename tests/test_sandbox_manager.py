@@ -427,6 +427,11 @@ def test_prefixed_references_reach_only_the_local_gateway(local):
     assert "kb-value" not in str(others) and "git-value" not in str(others)
 
 
+def test_trace_proxy_write_timeout_is_passed_with_no_default():
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    assert services["trace-proxy"]["environment"]["TRACE_PROXY_WRITE_TIMEOUT_SECONDS"] == "${TRACE_PROXY_WRITE_TIMEOUT_SECONDS:-}"
+
+
 def test_local_stack_starts_without_the_reference_file(local):
     assert "KIONGA_KB_SECRET_DOCS" not in local["gateway"]["environment"]
 

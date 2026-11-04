@@ -322,7 +322,7 @@ def test_platform_accepts_both_token_forms_once_the_manager_exists():
     assert "runtimeconfig.Load()" in (platform / "cmd/gateway/main.go").read_text()
 
 
-TUNING = {"turn_timeout_seconds": 300, "compact_threshold_tokens": 200000, "worker_pool": 8,
+TUNING = {"trace_proxy_write_timeout_seconds": 900, "turn_timeout_seconds": 300, "compact_threshold_tokens": 200000, "worker_pool": 8,
           "sandbox_retention_seconds": 3600, "scheduler": "off"}
 
 
@@ -336,17 +336,21 @@ def test_team_tuning_reaches_the_gateway_as_variables(tmp_path):
     assert gateway["KIONGA_TEAM_WORKER_POOL"] == "8"
     assert gateway["KIONGA_TEAM_SANDBOX_RETENTION_SECONDS"] == "3600"
     assert gateway["KIONGA_TEAM_SCHEDULER"] == "off"
+    proxy = rendered(path)["services"]["trace-proxy"]["environment"]
+    assert proxy["TRACE_PROXY_WRITE_TIMEOUT_SECONDS"] == "900"
 
 
 def test_team_tuning_is_empty_unless_set(tmp_path):
     path, _ = inputs(tmp_path, enabled(sandbox=False))
     gateway = rendered(path)["services"]["gateway"]["environment"]
     for variable in (*vm.TEAM_TUNING.values(), "KIONGA_TEAM_SCHEDULER"):
-        assert gateway[variable] == "", "the gateway treats empty as its default"
+        if variable != "TRACE_PROXY_WRITE_TIMEOUT_SECONDS":
+            assert gateway[variable] == "", "the gateway treats empty as its default"
 
 
 @pytest.mark.parametrize("tuning,message", [
     ({"worker_pool": 0}, "positive whole number"),
+    ({"trace_proxy_write_timeout_seconds": 3601}, "from 1 to 3600"),
     ({"worker_pool": "8"}, "positive whole number"),
     ({"worker_pool": True}, "positive whole number"),
     ({"scheduler": "on"}, "can only be off"),

@@ -27,7 +27,8 @@ TEAM_KEYS = {"enabled", "agent_runtime_image", "trace_proxy_image", "llm_upstrea
 TEAM_TUNING = {"turn_timeout_seconds": "KIONGA_AGENT_TURN_TIMEOUT_SECONDS",
                "compact_threshold_tokens": "KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS",
                "worker_pool": "KIONGA_TEAM_WORKER_POOL",
-               "sandbox_retention_seconds": "KIONGA_TEAM_SANDBOX_RETENTION_SECONDS"}
+               "sandbox_retention_seconds": "KIONGA_TEAM_SANDBOX_RETENTION_SECONDS",
+               "trace_proxy_write_timeout_seconds": "TRACE_PROXY_WRITE_TIMEOUT_SECONDS"}
 REFERENCE_KEYS = {"files", "knowledge_allowlist", "connection_allowlist"}
 REFERENCE_PREFIXES = ("KIONGA_KB_SECRET_", "KIONGA_CONNECTION_SECRET_")
 REFERENCE_NAMES = ("KIONGA_QDRANT_KEY", "KIONGA_KNOWLEDGE_DSN", "KIONGA_AGENT_API_TOKEN")
@@ -102,6 +103,8 @@ def team_settings(data):
         value = tuning.get(key, 1)
         if type(value) is not int or value < 1:
             raise ValueError(f"agent_teams.tuning.{key} must be a positive whole number")
+    if tuning.get("trace_proxy_write_timeout_seconds", 1) > 3600:
+        raise ValueError("agent_teams.tuning.trace_proxy_write_timeout_seconds must be from 1 to 3600")
     if tuning.get("scheduler", "off") != "off":
         raise ValueError("agent_teams.tuning.scheduler can only be off")
     if not sandbox.get("enabled"):
