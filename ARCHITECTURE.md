@@ -40,7 +40,10 @@ and log exporter profiles.
 
 `up.py` deploys `vm/compose.yaml` (gateway and Caddy) from a non-secret deployment
 JSON (`deployment.example.json`), a config file (`config.example.json`) and secret
-files materialized outside Git.
+files materialized outside Git. Two optional overlays add agent teams when
+`deployment.json` enables them: `compose.teams.yaml` (designer runner and trace
+proxy) and `compose.sandbox.yaml` (sandbox manager). Both use internal networks, and
+Caddy stays the only public listener.
 
 ### `helm/`
 
@@ -91,8 +94,8 @@ wiring, the MLflow server, object migration and the production deploy path.
   `pipeline-runner` and `sandbox-manager` mount it.
 - **Sandboxes fail closed.** `sandbox-manager` runs with `runsc` or creates nothing.
   The unsafe runtime flag is a local development opt-in. `compose.public.yaml`
-  pins it off, `scripts/public-preflight.sh` rejects it, and the chart has no value
-  for it (`tests/test_sandbox_manager.py`).
+  pins it off, `scripts/public-preflight.sh` rejects it, and `vm/` and the chart have
+  no setting for it (`tests/test_sandbox_manager.py`, `tests/test_vm_agent_teams.py`).
 
 ## How it connects to other components
 

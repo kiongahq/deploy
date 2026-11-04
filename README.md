@@ -108,7 +108,8 @@ of the stack does not depend on this service.
 | Engine runs `runsc`, `KIONGA_SANDBOX_IMAGES` lists an image by digest | Sandboxes work |
 | `KIONGA_SANDBOX_IMAGES` empty (the local default) | The manager stays up and creates return 503 `sandbox_unavailable`; set it in `.env` |
 | Engine has no `runsc` (default on macOS and Windows) | Sandbox tools report `sandbox_unavailable`; there is no fallback |
-| Public overlay | `runsc` is pinned, `public-up.sh` stops unless a real container runs under gVisor, and the preflight rejects the unsafe flag and requires `KIONGA_SANDBOX_IMAGES` |
+| Single server (`vm/`) | Off until `agent_teams.sandbox.enabled` in `deployment.json`; `vm/up.py` starts nothing unless a real container runs under gVisor |
+| Legacy public overlay | `runsc` is pinned, `public-up.sh` stops unless a real container runs under gVisor, and the preflight rejects the unsafe flag and requires `KIONGA_SANDBOX_IMAGES` |
 | Helm | Needs a gVisor RuntimeClass; the chart has no setting for the unsafe flag |
 
 On a Linux host, `sudo make sandbox-runtime-install` is an optional way to install

@@ -1,0 +1,69 @@
+# Agent teams on a single server: added by vm/up.py when agent_teams.enabled is true
+# in deployment.json. Never merge compose.yaml into this stack.
+#
+# The runner makes one model call per request and reaches models only through the
+# trace proxy. Both sit on an internal network with the gateway, so Caddy cannot
+# reach them. Only the trace proxy also has a route out, to the provider.
+services:
+  gateway:
+    environment:
+      KIONGA_AGENT_DESIGNER_RUNNER_URL: http://agent-designer-runner:9100
+      KIONGA_AGENT_DESIGNER_CALLBACK_URL: http://gateway:8087/api/v1
+      KIONGA_AGENT_DESIGNER_RUNNER_TOKEN_FILE: /run/secrets/KIONGA_DESIGNER_RUNNER_TOKEN
+    secrets: [KIONGA_DESIGNER_RUNNER_TOKEN]
+    networks: [agents]
+  trace-proxy:
+    image: ${KIONGA_TRACE_PROXY_IMAGE:?supply digest through vm/up.py}
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=16m]
+    mem_limit: 256m
+    pids_limit: 128
+    environment:
+      LLM_UPSTREAM_URL: ${KIONGA_LLM_UPSTREAM_URL:?supply through vm/up.py}
+      LLM_UPSTREAM_AUTH_HEADER: ${KIONGA_LLM_UPSTREAM_AUTH_HEADER:-}
+      LLM_UPSTREAM_AUTH_SCHEME: ${KIONGA_LLM_UPSTREAM_AUTH_SCHEME:-}
+      LLM_UPSTREAM_API_KEY_FILE: /run/secrets/LLM_UPSTREAM_API_KEY
+      TRACE_PROXY_KEYS_FILE: /run/secrets/TRACE_PROXY_KEYS
+      MLAIOPS_AGENT_NAME: shared
+      MLAIOPS_AGENT_VERSION: vm
+    secrets: [LLM_UPSTREAM_API_KEY, TRACE_PROXY_KEYS]
+    networks: [agents, llm-egress]
+  agent-designer-runner:
+    image: ${KIONGA_AGENT_RUNTIME_IMAGE:?supply digest through vm/up.py}
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=64m]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    # The SDK reads this key from the environment. Reading it here keeps it out of
+    # the deployment's environment, the Compose file and the container's argv.
+    entrypoint:
+      - sh
+      - -c
+      - 'export OPENAI_API_KEY="$$(cat /run/secrets/TRACE_PROXY_PROJECT_KEY)"; exec python -m agent_runtime.designer'
+    environment:
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      KIONGA_DESIGNER_RUNNER_TOKEN_FILE: /run/secrets/KIONGA_DESIGNER_RUNNER_TOKEN
+      MLAIOPS_LLM_BACKEND: openai-compatible
+      MLAIOPS_LLM_MODEL: ${KIONGA_LLM_MODEL:?supply through vm/up.py}
+      MLAIOPS_LLM_BASE_URL: http://trace-proxy:8081/v1
+    secrets: [KIONGA_DESIGNER_RUNNER_TOKEN, TRACE_PROXY_PROJECT_KEY]
+    networks: [agents]
+    depends_on: [trace-proxy]
+networks:
+  agents: {internal: true}
+  llm-egress: {}
+secrets:
+  KIONGA_DESIGNER_RUNNER_TOKEN: {file: '${KIONGA_SECRETS_DIR}/KIONGA_DESIGNER_RUNNER_TOKEN'}
+  TRACE_PROXY_PROJECT_KEY: {file: '${KIONGA_SECRETS_DIR}/TRACE_PROXY_PROJECT_KEY'}
+  TRACE_PROXY_KEYS: {file: '${KIONGA_SECRETS_DIR}/TRACE_PROXY_KEYS'}
+  LLM_UPSTREAM_API_KEY: {file: '${KIONGA_SECRETS_DIR}/LLM_UPSTREAM_API_KEY'}

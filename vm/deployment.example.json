@@ -4,5 +4,18 @@
   "gateway_image": "ghcr.io/kiongahq/gateway@sha256:REPLACE_WITH_RELEASE_DIGEST",
   "caddy_image": "caddy@sha256:REPLACE_WITH_VERIFIED_DIGEST",
   "config_file": "/etc/kionga/config.json",
-  "secrets_directory": "/run/kionga/secrets"
+  "secrets_directory": "/run/kionga/secrets",
+  "agent_teams": {
+    "enabled": false,
+    "agent_runtime_image": "ghcr.io/kiongahq/agent-runtime@sha256:REPLACE_WITH_RELEASE_DIGEST",
+    "trace_proxy_image": "ghcr.io/kiongahq/trace-proxy@sha256:REPLACE_WITH_RELEASE_DIGEST",
+    "llm_upstream_url": "https://api.openai.com",
+    "llm_model": "REPLACE_WITH_MODEL",
+    "sandbox": {
+      "enabled": false,
+      "manager_image": "ghcr.io/kiongahq/sandbox-manager@sha256:REPLACE_WITH_RELEASE_DIGEST",
+      "images": ["ghcr.io/kiongahq/sandbox@sha256:REPLACE_WITH_RELEASE_DIGEST"],
+      "git_hosts": []
+    }
+  }
 }

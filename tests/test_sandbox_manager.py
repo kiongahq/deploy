@@ -189,6 +189,7 @@ def public_up(tmp_path, stub_run):
     stub = bin_dir / "docker"
     stub.write_text(f"""#!/bin/sh
 if [ "$1" = info ]; then echo '{{"runsc":{{"path":"/usr/bin/runsc"}}}}'; exit 0; fi
+if [ "$1" = image ]; then exit 0; fi
 if [ "$1" = run ]; then {stub_run}; fi
 echo "docker-called $1" >&2
 exit 1
@@ -512,25 +513,33 @@ def test_install_is_only_reached_through_its_own_target():
     assert "sandbox-runtime-install" in (ROOT / "README.md").read_text()
 
 
-def probe(tmp_path, output, status=0):
+def probe(tmp_path, output="", status=0, local=True, pull="exit 0", **env):
     shutil.rmtree(tmp_path / "bin", ignore_errors=True)
     (tmp_path / "bin").mkdir()
     stub = tmp_path / "bin" / "docker"
     stub.write_text(f"""#!/bin/sh
 echo "$@" >>"{tmp_path}/probe-args"
+if [ "$1" = image ]; then exit {0 if local else 1}; fi
+if [ "$1" = pull ]; then {pull}; fi
 echo '{output}'
 exit {status}
 """)
     stub.chmod(0o755)
-    return subprocess.run(["bash", str(ROOT / "scripts/check-sandbox-runtime.sh")], capture_output=True, text=True,
-                          env={"PATH": f"{tmp_path}/bin:/usr/bin:/bin", "KIONGA_ENGINE": "docker"})
+    return subprocess.run(["bash", str(ROOT / "scripts/check-sandbox-runtime.sh")], capture_output=True, text=True, timeout=30,
+                          env={"PATH": f"{tmp_path}/bin:/usr/bin:/bin", "KIONGA_ENGINE": "docker", **env})
 
 
 def test_verify_starts_a_container_with_no_network_under_runsc(tmp_path):
     assert probe(tmp_path, "[    0.000000] Starting gVisor...").returncode == 0
-    args = (tmp_path / "probe-args").read_text()
-    assert args.startswith("run --rm --network none --runtime runsc ") and args.strip().endswith("dmesg")
-    assert "info" not in args.split(), "a runtime list proves nothing on Podman"
+    run = (tmp_path / "probe-args").read_text().splitlines()[-1]
+    assert run.startswith("run --rm --pull never --network none --runtime runsc ") and run.endswith(" dmesg")
+    assert "info" not in (tmp_path / "probe-args").read_text().split(), "a runtime list proves nothing on Podman"
+
+
+def test_probe_image_is_pinned_by_a_multi_architecture_digest(tmp_path):
+    probe(tmp_path, "gVisor")
+    run = (tmp_path / "probe-args").read_text().splitlines()[-1]
+    assert re.search(r" busybox:1\.37@sha256:[a-f0-9]{64} dmesg$", run)
 
 
 def test_verify_requires_the_gvisor_kernel_banner(tmp_path):
@@ -539,6 +548,40 @@ def test_verify_requires_the_gvisor_kernel_banner(tmp_path):
     failed = probe(tmp_path, "unknown runtime", 125)
     assert failed.returncode == 1 and "failed to start" in failed.stderr
     assert "A container ran" not in failed.stdout + fake.stdout
+
+
+def test_verify_does_not_pull_an_image_it_already_has(tmp_path):
+    probe(tmp_path, "gVisor")
+    assert not any(line.startswith("pull ") for line in (tmp_path / "probe-args").read_text().splitlines())
+
+
+def test_verify_pulls_a_missing_image_then_runs(tmp_path):
+    assert probe(tmp_path, "gVisor", local=False).returncode == 0
+    commands = [line.split()[0] for line in (tmp_path / "probe-args").read_text().splitlines()]
+    assert commands == ["image", "pull", "run"]
+
+
+def test_a_host_without_network_gets_a_message_and_not_a_hang(tmp_path):
+    result = probe(tmp_path, local=False, pull="exec sleep 25", KIONGA_RUNSC_PROBE_PULL_SECONDS="1")
+    assert result.returncode == 1
+    assert "took longer than 1 seconds" in result.stderr and "no network" in result.stderr
+    assert not any(line.startswith("run ") for line in (tmp_path / "probe-args").read_text().splitlines())
+
+
+def test_a_failed_pull_gets_the_same_guidance(tmp_path):
+    result = probe(tmp_path, local=False, pull="echo 'dial tcp: no route to host'; exit 1")
+    assert result.returncode == 1
+    assert "could not pull" in result.stderr and "no route to host" in result.stderr and "docker load" in result.stderr
+
+
+def test_a_hung_probe_container_is_stopped(tmp_path):
+    (tmp_path / "bin").mkdir()
+    stub = tmp_path / "bin" / "docker"
+    stub.write_text('#!/bin/sh\n[ "$1" = image ] && exit 0\nexec sleep 25\n')
+    stub.chmod(0o755)
+    result = subprocess.run(["bash", str(ROOT / "scripts/check-sandbox-runtime.sh")], capture_output=True, text=True, timeout=20,
+                            env={"PATH": f"{tmp_path}/bin:/usr/bin:/bin", "KIONGA_ENGINE": "docker", "KIONGA_RUNSC_PROBE_RUN_SECONDS": "1"})
+    assert result.returncode == 1 and "did not finish within 1 seconds" in result.stderr
 
 
 def test_manager_needs_only_a_small_tmp_and_passes_the_git_settings():

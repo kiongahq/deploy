@@ -1,0 +1,41 @@
+# Agent team sandboxes on a single server: added by vm/up.py when
+# agent_teams.sandbox.enabled is true in deployment.json.
+#
+# The manager holds the engine socket, which is root-equivalent on this host. It
+# publishes no port and shares an internal network only with the gateway. The
+# runtime, the environment and the empty unsafe flag are literals, so nothing in
+# deployment.json, the configuration file or the shell can change them.
+services:
+  gateway:
+    environment:
+      KIONGA_SANDBOX_URL: http://sandbox-manager:8088
+      KIONGA_SANDBOX_TOKEN_FILE: /run/secrets/KIONGA_SANDBOX_TOKEN
+    secrets: [KIONGA_SANDBOX_TOKEN]
+    networks: [sandbox]
+  sandbox-manager:
+    image: ${KIONGA_SANDBOX_MANAGER_IMAGE:?supply digest through vm/up.py}
+    restart: unless-stopped
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=16m]
+    mem_limit: 256m
+    pids_limit: 128
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      PORT: "8088"
+      KIONGA_ENVIRONMENT: production
+      KIONGA_SANDBOX_DRIVER: docker
+      KIONGA_SANDBOX_RUNTIME: runsc
+      KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME: ""
+      KIONGA_SANDBOX_TOKEN_FILE: /run/secrets/KIONGA_SANDBOX_TOKEN
+      KIONGA_SANDBOX_IMAGES: ${KIONGA_SANDBOX_IMAGES:?supply through vm/up.py}
+      KIONGA_SANDBOX_GIT_HOSTS: ${KIONGA_SANDBOX_GIT_HOSTS:-}
+    secrets: [KIONGA_SANDBOX_TOKEN]
+    networks: [sandbox]
+networks:
+  sandbox: {internal: true}
+secrets:
+  KIONGA_SANDBOX_TOKEN: {file: '${KIONGA_SECRETS_DIR}/KIONGA_SANDBOX_TOKEN'}
