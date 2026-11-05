@@ -31,6 +31,21 @@ jobs:
         with:
           persist-credentials: false
       - run: bash scripts/workspace.sh
+      - name: Generate trace proxy and model reader keys for this run
+        run: |
+          key="$(openssl rand -hex 32)"
+          hash="$(printf %s "$key" | openssl dgst -sha256 -r | cut -d' ' -f1)"
+          reader_id="$(openssl rand -hex 24)"
+          reader_secret="$(openssl rand -hex 24)"
+          echo "::add-mask::$key"
+          echo "::add-mask::$reader_id"
+          echo "::add-mask::$reader_secret"
+          {
+            echo "SERVING_OBJECTSTORE_ACCESS_KEY=$reader_id"
+            echo "SERVING_OBJECTSTORE_SECRET_KEY=$reader_secret"
+            echo "TRACE_PROXY_PROJECT_KEY=$key"
+            echo "TRACE_PROXY_KEYS=[{\"key_id\":\"ci\",\"key_sha256\":\"$hash\",\"project\":\"ci\"}]"
+          } >>"$GITHUB_ENV"
       - run: docker compose -f compose.yaml --profile ide build
 
   stack:
@@ -42,6 +57,21 @@ jobs:
         with:
           persist-credentials: false
       - run: bash scripts/workspace.sh
+      - name: Generate trace proxy and model reader keys for this run
+        run: |
+          key="$(openssl rand -hex 32)"
+          hash="$(printf %s "$key" | openssl dgst -sha256 -r | cut -d' ' -f1)"
+          reader_id="$(openssl rand -hex 24)"
+          reader_secret="$(openssl rand -hex 24)"
+          echo "::add-mask::$key"
+          echo "::add-mask::$reader_id"
+          echo "::add-mask::$reader_secret"
+          {
+            echo "SERVING_OBJECTSTORE_ACCESS_KEY=$reader_id"
+            echo "SERVING_OBJECTSTORE_SECRET_KEY=$reader_secret"
+            echo "TRACE_PROXY_PROJECT_KEY=$key"
+            echo "TRACE_PROXY_KEYS=[{\"key_id\":\"ci\",\"key_sha256\":\"$hash\",\"project\":\"ci\"}]"
+          } >>"$GITHUB_ENV"
       - name: Boot the core platform
         # The workbench and IDE are dev surfaces this lane does not exercise;
         # the build job proves they compile.

@@ -69,12 +69,21 @@ services:
     ports: !reset []
     environment:
       NEXTAUTH_URL: https://${MLAIOPS_DOMAIN}/langfuse
-  trace-proxy: {restart: unless-stopped, ports: !reset []}
+  # Operator-provided keys: public mode never uses keys generated for a laptop.
+  trace-proxy:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      TRACE_PROXY_KEYS: ${TRACE_PROXY_KEYS:?set TRACE_PROXY_KEYS in .env (see .env.example)}
   agent-runtime:
     restart: unless-stopped
     ports: !reset []
     environment:
       MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?set TRACE_PROXY_PROJECT_KEY in .env (see .env.example)}
+  agent-designer-runner:
+    environment:
+      OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?set TRACE_PROXY_PROJECT_KEY in .env (see .env.example)}
   feature-gateway:
     restart: unless-stopped
     ports: !reset []
@@ -90,6 +99,8 @@ services:
     ports: !reset []
     environment:
       MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      AWS_ACCESS_KEY_ID: ${SERVING_OBJECTSTORE_ACCESS_KEY:?set SERVING_OBJECTSTORE_ACCESS_KEY in .env (see .env.example)}
+      AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?set SERVING_OBJECTSTORE_SECRET_KEY in .env (see .env.example)}
   prefect-server: {restart: unless-stopped, ports: !reset []}
   # The workbench stays private on the VM; reach it over an SSH tunnel:
   #   ssh -L 8888:localhost:8888 <vm>  (after re-publishing the port locally)

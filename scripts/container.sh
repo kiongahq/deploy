@@ -7,12 +7,14 @@ if [[ -z "$engine" && -f "$ROOT/.local-state/container-engine" ]]; then
   engine="$(cat "$ROOT/.local-state/container-engine")"
 fi
 engine="${engine:-docker}"
-# Local workspace tokens from make local-up, so every compose call (make
+# Local generated secrets from make local-up, so every compose call (make
 # langflow-up recreates the gateway) renders the same values. A variable set in
 # the shell wins. public-up.sh calls docker compose directly and never reads this.
 if [[ "${1:-}" == compose && -f "$ROOT/.local-state/secrets.env" ]]; then
   while IFS= read -r line; do
-    [[ "$line" =~ ^(JUPYTER_TOKEN|IDE_PASSWORD|KIONGA_WORKSPACE_JOB_TOKEN)=([A-Za-z0-9._~-]+)$ ]] || continue
+    # TRACE_PROXY_KEYS is single-quoted JSON, so the shell and Compose both read it.
+    [[ "$line" =~ ^(JUPYTER_TOKEN|IDE_PASSWORD|KIONGA_WORKSPACE_JOB_TOKEN|TRACE_PROXY_PROJECT_KEY|SERVING_OBJECTSTORE_ACCESS_KEY|SERVING_OBJECTSTORE_SECRET_KEY)=([A-Za-z0-9._~-]+)$ ]] ||
+      [[ "$line" =~ ^(TRACE_PROXY_KEYS)=\'([^\']+)\'$ ]] || continue
     [[ -n "${!BASH_REMATCH[1]:-}" ]] || export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
   done <"$ROOT/.local-state/secrets.env"
 fi

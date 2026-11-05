@@ -123,6 +123,9 @@ services:
       AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
       AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       S3_ENDPOINT: http://objectstore:9000
+      # The read-only user this job creates for the serving manager.
+      SERVING_OBJECTSTORE_ACCESS_KEY: ${SERVING_OBJECTSTORE_ACCESS_KEY:?SERVING_OBJECTSTORE_ACCESS_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+      SERVING_OBJECTSTORE_SECRET_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?SERVING_OBJECTSTORE_SECRET_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
     volumes:
       - ./objectstore-init.py:/bootstrap/objectstore-init.py:ro
 
@@ -458,8 +461,12 @@ services:
       PLATFORM_NETWORK: mlaiops_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: mlaiops
-      AWS_SECRET_ACCESS_KEY: mlaiops-local-secret
+      # Read-only on the model buckets (objectstore-init.py), never the store's
+      # root user: artifact downloads run with these credentials.
+      AWS_ACCESS_KEY_ID: ${SERVING_OBJECTSTORE_ACCESS_KEY:?SERVING_OBJECTSTORE_ACCESS_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+      AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?SERVING_OBJECTSTORE_SECRET_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+    depends_on:
+      objectstore-init: {condition: service_completed_successfully}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${SERVING_MANAGER_PORT:-8085}:8085"]
 
   realtime-processor:
@@ -508,6 +515,12 @@ services:
       # All agent LLM calls egress here; requests forward to the configured
       # provider and every call is published to mlaiops.llm.traces.
       LLM_UPSTREAM_URL: ${LLM_UPSTREAM_URL:-https://api.openai.com}
+      # Callers authenticate with a project key; only its SHA-256 lives here.
+      TRACE_PROXY_KEYS: ${TRACE_PROXY_KEYS:?TRACE_PROXY_KEYS is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
+      # The provider key stays in the proxy; agents never hold it.
+      LLM_UPSTREAM_API_KEY: ${LLM_UPSTREAM_API_KEY:-}
+      LLM_UPSTREAM_AUTH_HEADER: ${LLM_UPSTREAM_AUTH_HEADER:-}
+      LLM_UPSTREAM_AUTH_SCHEME: ${LLM_UPSTREAM_AUTH_SCHEME:-}
       TRACE_SINK_FORMAT: kafka-rest
       TRACE_SINK_URL: http://kafka-rest:8082/topics/mlaiops.llm.traces
       MLAIOPS_AGENT_NAME: shared
@@ -537,12 +550,13 @@ services:
       MLAIOPS_URL: http://gateway:8080
       DATABASE_URL: postgres://mlaiops:mlaiops-local@postgres:5432/mlaiops?sslmode=disable
       # mock by default: the stack works with zero API keys. Set
-      # MLAIOPS_LLM_BACKEND=openai (plus OPENAI_API_KEY) or anthropic for real
-      # models; calls egress through the trace-proxy.
+      # MLAIOPS_LLM_BACKEND=openai (plus LLM_UPSTREAM_API_KEY on the proxy) or
+      # anthropic for real models; openai calls egress through the trace-proxy,
+      # so the OpenAI key this service holds is its Kionga project key.
       MLAIOPS_LLM_BACKEND: ${MLAIOPS_LLM_BACKEND:-mock}
       MLAIOPS_LLM_MODEL: ${MLAIOPS_LLM_MODEL:-}
       MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?TRACE_PROXY_PROJECT_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
@@ -552,7 +566,8 @@ services:
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${AGENT_RUNTIME_PORT:-19000}:9000"]
 
   # Executes Agent Designer drafts as declarative graphs (no user code). It has
-  # no published port, no provider keys beyond the platform chat model, and
+  # no published port, holds a trace-proxy project key rather than a provider
+  # key for the platform chat model, and
   # reaches Kionga resources only through the gateway's internal listener.
   agent-designer-runner:
     restart: unless-stopped
@@ -568,7 +583,7 @@ services:
       MLAIOPS_LLM_BACKEND: ${MLAIOPS_LLM_BACKEND:-mock}
       MLAIOPS_LLM_MODEL: ${MLAIOPS_LLM_MODEL:-}
       MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?TRACE_PROXY_PROJECT_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       MLAIOPS_COST_PER_1K_INPUT: ${MLAIOPS_COST_PER_1K_INPUT:-0}
       MLAIOPS_COST_PER_1K_OUTPUT: ${MLAIOPS_COST_PER_1K_OUTPUT:-0}
