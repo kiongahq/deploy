@@ -72,6 +72,25 @@ targets: `make local-status`, `make local-logs`, `make local-down`, `make ide-up
 (browser IDE), `make workspace-pull` (update clean checkouts) and `make smoke`
 (end-to-end check against the running stack).
 
+### Network exposure
+
+The local stack ships development credentials, so every port it publishes binds to
+`KIONGA_BIND_ADDRESS`, which defaults to `127.0.0.1`. Nothing is reachable from
+other machines until you widen it:
+
+| Setting | Effect |
+| --- | --- |
+| unset (default) | Every published port, including Postgres `5432`, Redis `6379` and Kafka `9092`, listens on `127.0.0.1` only |
+| `KIONGA_BIND_ADDRESS=0.0.0.0` | The console, APIs and data services listen on every interface; use only on a trusted network after changing the default credentials |
+| any value | Jupyter (`8888`), the log exporter and its search backends stay on `127.0.0.1` |
+
+`compose.public.yaml` removes every host port except Caddy's `80` and `443`
+(`tests/test_network_exposure.py`, `tests/test_sso.py`).
+It also refuses to start with any built-in local credential: the
+`public-preflight` service (and `public-up.sh`) runs `scripts/public-preflight.sh`,
+which fails when a credential listed in `.env.example` is unset or equals a local
+default, and the services that hold those credentials wait for it to succeed.
+
 Langflow is an optional agent canvas. Start it with `make langflow-up` and stop
 it with `make langflow-down`, using the same Docker or Podman engine as the
 rest of Kionga. Open **Agents → Langflow** in the console. The `langflow-data`
