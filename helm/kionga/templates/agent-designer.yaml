@@ -1,7 +1,7 @@
 {{- /*
 Agent Designer runner: executes native agent graph drafts for the playground
 and evaluations. Graphs are declarative (no user code). The runner holds no
-provider or resource credentials. It reaches Kionga only through the
+provider or resource credentials, only a trace-proxy project key. It reaches Kionga only through the
 gateway's internal listener (8087), using a run-scoped credential, and models
 only through the trace-proxy. Its pods deliberately lack the release instance
 label, so the broad control-plane NetworkPolicy does not apply to them; the
@@ -72,6 +72,10 @@ spec:
             - {name: MLAIOPS_LLM_BACKEND, value: {{ $d.llm.backend | quote }}}
             - {name: MLAIOPS_LLM_MODEL, value: {{ $d.llm.model | quote }}}
             - {name: MLAIOPS_LLM_BASE_URL, value: "http://{{ .Release.Name }}-trace-proxy.{{ .Release.Namespace }}.svc:8081/v1"}
+            # The SDK reads this name; the value authenticates to the trace-proxy,
+            # which holds the provider key.
+            - name: OPENAI_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ $d.secretName }}, key: TRACE_PROXY_PROJECT_KEY}}
             - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
             - {name: HOME, value: /tmp}
           ports: [{name: http, containerPort: 9100}]

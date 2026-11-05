@@ -45,7 +45,11 @@ def test_enabled_runner_is_hardened_and_shares_the_token_with_the_gateway(tmp_pa
     assert pod["securityContext"]["runAsNonRoot"] and pod["automountServiceAccountToken"] is False
     runner_env = env(container)
     assert runner_env["KIONGA_DESIGNER_RUNNER_TOKEN_FILE"] == "/run/secrets/designer/KIONGA_DESIGNER_RUNNER_TOKEN"
-    assert "KIONGA_DESIGNER_RUNNER_TOKEN" not in runner_env and not any("API_KEY" in name for name in runner_env)
+    assert "KIONGA_DESIGNER_RUNNER_TOKEN" not in runner_env
+    # The only API key is its trace-proxy project key, by reference, never a value.
+    assert [name for name in runner_env if "API_KEY" in name] == ["OPENAI_API_KEY"]
+    key = next(item for item in container["env"] if item["name"] == "OPENAI_API_KEY")
+    assert key == {"name": "OPENAI_API_KEY", "valueFrom": {"secretKeyRef": {"name": "designer-token", "key": "TRACE_PROXY_PROJECT_KEY"}}}
     assert runner_env["MLAIOPS_LLM_BASE_URL"] == "http://kionga-trace-proxy.kionga-system.svc:8081/v1"
     assert runner_env["KIONGA_DESIGNER_MAX_RUNS"] == "4"
     assert pod["volumes"][1]["secret"]["secretName"] == "designer-token"

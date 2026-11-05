@@ -12,6 +12,9 @@ REBUILD="${KIONGA_REBUILD:-0}"
 # sources changed. never (make local-start): cached images only.
 BUILD_MODE="${KIONGA_BUILD_MODE:-missing}"
 PORT_STATE="$ROOT/.local-state/ports.env"
+SECRET_STATE="$ROOT/.local-state/secrets.env"
+LOCAL_SECRETS=(JUPYTER_TOKEN IDE_PASSWORD KIONGA_WORKSPACE_JOB_TOKEN TRACE_PROXY_PROJECT_KEY SERVING_OBJECTSTORE_ACCESS_KEY SERVING_OBJECTSTORE_SECRET_KEY)
+MIN_LOCAL_SECRET_LENGTH=32
 # Port variables the operator set in the shell for this command. Only these are
 # never moved; ports from .env, defaults and remembered choices may move.
 PINNED_PORTS=" "
@@ -137,6 +140,72 @@ choose_ports() {
     fail "$service port $configured and every fallback are occupied; set $var to a free port."
   done
   GATEWAY_PORT="${GATEWAY_PORT:-8080}"
+}
+
+local_secret_ok() {
+  [[ "$1" =~ ^[A-Za-z0-9._~-]+$ ]] && ((${#1} >= MIN_LOCAL_SECRET_LENGTH))
+}
+
+# The last NAME=value of a dotenv-style file, without surrounding quotes.
+secret_from_file() {
+  local value
+  [[ -f "$2" ]] || return 0
+  value="$(sed -n "s/^$1=//p" "$2" | tail -n 1)"
+  value="${value%\"}" value="${value#\"}" value="${value%\'}" value="${value#\'}"
+  printf '%s' "$value"
+}
+
+# The trace proxy's key list for the local project key, which holds only the key's
+# SHA-256. A list set in the shell or .env (say, several projects) is kept as is.
+# The key travels in the environment, never in an argument other processes can read.
+trace_proxy_keys() {
+  local keys hash
+  hash="$(PROJECT_KEY="$1" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["PROJECT_KEY"].encode()).hexdigest())')"
+  keys="${TRACE_PROXY_KEYS:-$(secret_from_file TRACE_PROXY_KEYS "$ROOT/.env")}"
+  if [[ -z "$keys" ]]; then
+    printf '[{"key_id":"local-agents","key_sha256":"%s","project":"local"}]' "$hash"
+    return
+  fi
+  [[ "$keys" != *"'"* ]] || fail "TRACE_PROXY_KEYS must not contain a single quote."
+  [[ "$keys" == *"$hash"* ]] || printf 'TRACE_PROXY_KEYS does not list the hash of TRACE_PROXY_PROJECT_KEY; agents will get 401 from the trace proxy.\n' >&2
+  printf '%s' "$keys"
+}
+
+# Workspace tokens are random per checkout and survive restarts, so the gateway
+# and the workspaces always agree. Order: the shell, then .env, then the stored
+# value, and a new random value only when none of those exists. A weak value in
+# .env (an old copy of .env.example) is ignored; one set in the shell is an
+# explicit choice, so it stops the start instead. Values are never printed.
+ensure_local_secrets() {
+  local var value stored from_env content="" temporary project_key="" trace_keys
+  for var in "${LOCAL_SECRETS[@]}"; do
+    value="${!var:-}"
+    if [[ -n "$value" ]]; then
+      local_secret_ok "$value" || fail "$var set in the shell must be at least $MIN_LOCAL_SECRET_LENGTH characters of A-Za-z0-9._~-. Unset it to use a generated value."
+    else
+      from_env="$(secret_from_file "$var" "$ROOT/.env")"
+      stored="$(secret_from_file "$var" "$SECRET_STATE")"
+      if local_secret_ok "$from_env"; then
+        value="$from_env"
+      else
+        [[ -z "$from_env" ]] || printf 'Ignoring weak %s in .env (at least %s characters are required); remove that line.\n' "$var" "$MIN_LOCAL_SECRET_LENGTH" >&2
+        if local_secret_ok "$stored"; then
+          value="$stored"
+        else
+          value="$(python3 -c 'import secrets; print(secrets.token_hex(24))')"
+        fi
+      fi
+    fi
+    content+="$var=$value"$'\n'
+    [[ "$var" != TRACE_PROXY_PROJECT_KEY ]] || project_key="$value"
+  done
+  trace_keys="$(trace_proxy_keys "$project_key")" || exit 1
+  content+="TRACE_PROXY_KEYS='$trace_keys'"$'\n'
+  mkdir -p "$(dirname "$SECRET_STATE")"
+  temporary="$(mktemp "$SECRET_STATE.XXXXXX")"
+  chmod 600 "$temporary"
+  printf '%s' "$content" >"$temporary"
+  mv "$temporary" "$SECRET_STATE"
 }
 
 # Remembered port moves keep URLs stable across restarts. A variable set in
@@ -513,6 +582,7 @@ main() {
   require_positive_integer KIONGA_START_TIMEOUT_SECONDS "$START_TIMEOUT_SECONDS"
   [[ "$BUILD_MODE" == auto || "$BUILD_MODE" == missing || "$BUILD_MODE" == never ]] || fail "KIONGA_BUILD_MODE must be missing, auto or never"
   ensure_engine
+  ensure_local_secrets
   load_port_choices
   choose_ports
 

@@ -127,7 +127,7 @@ snapshot=$(curl -sf "$GATEWAY/api/v1/storage/objects?bucket=mlaiops-features&pre
 [[ "${snapshot:-0}" -ge 1 ]] && ok "offline snapshot present" || bad "offline snapshot missing"
 
 say "== 8. real-time processing"
-if docker compose -f "$(dirname "$0")/../compose.yaml" ps realtime-processor 2>/dev/null | grep -q Up; then
+if bash "$(dirname "$0")/container.sh" compose -f "$(dirname "$0")/../compose.yaml" ps realtime-processor 2>/dev/null | grep -q Up; then
   before=$(curl -sf "$GATEWAY/api/v1/realtime" | jqget "d['demos'].get('fraud',{}).get('events',0)")
   events="$before"
   # Produce from inside the processor container (it has the SDK + httpx, so no
@@ -135,7 +135,7 @@ if docker compose -f "$(dirname "$0")/../compose.yaml" ps realtime-processor 2>/
   # on a cold stack the consumer may still be joining the Kafka group when the
   # first batch lands.
   produce() {
-    docker compose -f "$(dirname "$0")/../compose.yaml" exec -T realtime-processor \
+    bash "$(dirname "$0")/container.sh" compose -f "$(dirname "$0")/../compose.yaml" exec -T realtime-processor \
       python -m realtime.produce --demo fraud --count 3 >/dev/null 2>&1 \
     || (cd "$(dirname "$0")/.." && KAFKA_REST_URL=http://localhost:8082 \
         PYTHONPATH="${KIONGA_SRC:-..}/agent-runtime" python3 -m realtime.produce --demo fraud --count 3 >/dev/null 2>&1)

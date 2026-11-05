@@ -32,7 +32,8 @@ and log exporter profiles.
   and the login-page provider template (`providers.tmpl`).
 - `mlflow/Dockerfile`: the MLflow server image, which doubles as the model server
   image (`mlaiops-mlflow`). `postgres/init.sql` and `objectstore-init.py` bootstrap
-  databases and buckets.
+  databases and buckets. `objectstore-init.py` also creates the read-only user the
+  serving manager downloads artifacts with, and fails if that user can write.
 - `.env.example`: every setting operators put in `.env`.
 
 ### `vm/`

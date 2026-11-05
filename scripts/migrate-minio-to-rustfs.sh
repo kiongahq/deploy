@@ -41,7 +41,7 @@ echo "==> reading the old volume with $MINIO_IMAGE"
 docker image inspect mlaiops-mlflow >/dev/null 2>&1 || fail "mlaiops-mlflow image missing; run 'make local-up' once first."
 
 echo "==> starting the RustFS object store"
-docker compose -f compose.yaml up -d --wait objectstore
+bash scripts/container.sh compose -f compose.yaml up -d --wait objectstore
 
 echo "==> starting a temporary MinIO on $SRC_VOLUME"
 docker rm -f "$SOURCE" >/dev/null 2>&1 || true
