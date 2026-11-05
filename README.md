@@ -43,6 +43,11 @@ make local-start              # cached images only: no downloads or builds
   choice is remembered in `.local-state/ports.env` so URLs stay stable. Only a
   port set in the shell for that command (`POSTGRES_PORT=… make local-up`) is
   left as given.
+- **Workspace tokens:** `JUPYTER_TOKEN`, `IDE_PASSWORD` and
+  `KIONGA_WORKSPACE_JOB_TOKEN` are random, generated once and kept in
+  `.local-state/secrets.env` (mode 0600, ignored by Git) so restarts keep working.
+  A value in the shell or in `.env` wins, and must be at least 32 characters.
+  To rotate them, delete the file and run `make local-up` again.
 - **Disk:** builds count the host's free space plus space the Podman machine
   already holds but does not use. If that is short, it removes dangling
   (untagged, unused) images; tagged images, containers and volumes are never
