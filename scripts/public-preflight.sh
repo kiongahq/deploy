@@ -13,7 +13,7 @@
 # credential that is missing here, so keep the two in step.
 set -eu
 
-REQUIRED="MLAIOPS_DOMAIN MLAIOPS_ACME_EMAIL DEX_ADMIN_EMAIL DEX_ADMIN_PASSWORD_HASH TRACE_PROXY_PROJECT_KEY TRACE_PROXY_KEYS SERVING_OBJECTSTORE_ACCESS_KEY SERVING_OBJECTSTORE_SECRET_KEY"
+REQUIRED="MLAIOPS_DOMAIN MLAIOPS_ACME_EMAIL DEX_ADMIN_EMAIL DEX_ADMIN_PASSWORD_HASH TRACE_PROXY_PROJECT_KEY TRACE_PROXY_KEYS SERVING_OBJECTSTORE_ACCESS_KEY SERVING_OBJECTSTORE_SECRET_KEY KIONGA_SANDBOX_TOKEN KIONGA_SANDBOX_IMAGES"
 
 SECRETS="
 MLAIOPS_INTERNAL_TOKEN=kionga-local-service-token
@@ -87,6 +87,27 @@ done
 if [ "$(value_of KIONGA_SSO_LDAP)" = "true" ]; then
   check_secret "${LDAP_SECRET%%=*}"
 fi
+
+# Sandboxes run under gVisor in public mode. compose.public.yaml pins both values
+# on the sandbox-manager service; refusing them here means a .env that asks for
+# something else stops the start rather than being silently ignored.
+token=$(value_of KIONGA_SANDBOX_TOKEN)
+if [ -n "$token" ] && [ "${#token}" -lt 32 ]; then
+  fail "KIONGA_SANDBOX_TOKEN must be at least 32 characters (see .env.example)"
+fi
+case "$(value_of KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME)" in
+  ""|0) ;;
+  *) fail "KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME is for local development only; remove it from the public configuration" ;;
+esac
+case "$(value_of KIONGA_SANDBOX_RUNTIME)" in
+  ""|runsc) ;;
+  *) fail "KIONGA_SANDBOX_RUNTIME must be runsc in public mode" ;;
+esac
+# Every entry names one image by digest, so a moved tag can never reach a sandbox.
+for image in $(value_of KIONGA_SANDBOX_IMAGES | tr ',' ' '); do
+  printf '%s' "$image" | grep -Eq '^[^[:space:]@]+@sha256:[a-f0-9]{64}$' ||
+    fail "KIONGA_SANDBOX_IMAGES entries must be pinned as repository@sha256:digest"
+done
 
 if [ "$failed" -ne 0 ]; then
   echo "public preflight: refusing to start the public stack with missing or default credentials" >&2

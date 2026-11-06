@@ -13,7 +13,7 @@ engine="${engine:-docker}"
 if [[ "${1:-}" == compose && -f "$ROOT/.local-state/secrets.env" ]]; then
   while IFS= read -r line; do
     # TRACE_PROXY_KEYS is single-quoted JSON, so the shell and Compose both read it.
-    [[ "$line" =~ ^(JUPYTER_TOKEN|IDE_PASSWORD|KIONGA_WORKSPACE_JOB_TOKEN|TRACE_PROXY_PROJECT_KEY|SERVING_OBJECTSTORE_ACCESS_KEY|SERVING_OBJECTSTORE_SECRET_KEY)=([A-Za-z0-9._~-]+)$ ]] ||
+    [[ "$line" =~ ^(JUPYTER_TOKEN|IDE_PASSWORD|KIONGA_WORKSPACE_JOB_TOKEN|KIONGA_SANDBOX_TOKEN|TRACE_PROXY_PROJECT_KEY|SERVING_OBJECTSTORE_ACCESS_KEY|SERVING_OBJECTSTORE_SECRET_KEY)=([A-Za-z0-9._~-]+)$ ]] ||
       [[ "$line" =~ ^(TRACE_PROXY_KEYS)=\'([^\']+)\'$ ]] || continue
     [[ -n "${!BASH_REMATCH[1]:-}" ]] || export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
   done <"$ROOT/.local-state/secrets.env"

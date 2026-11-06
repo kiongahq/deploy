@@ -97,6 +97,8 @@ components:
     # LLM_UPSTREAM_API_KEY and set this list to
     # [TRACE_PROXY_KEYS, LLM_UPSTREAM_API_KEY]; set config.LLM_UPSTREAM_AUTH_HEADER
     # and config.LLM_UPSTREAM_AUTH_SCHEME when it does not use Authorization: Bearer.
+    # config.TRACE_PROXY_WRITE_TIMEOUT_SECONDS sets the total time for one response,
+    # stream included (1 to 3600, default 660). Keep it above your callers' timeouts.
     secrets: [TRACE_PROXY_KEYS]
 resources:
   requests: {cpu: 100m, memory: 128Mi}
@@ -139,6 +141,64 @@ agentDesigner:
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: "2", memory: 1Gi}
+# Agent team sandboxes. Off by default; while off, sandbox tools report
+# sandbox_unavailable and everything else works. To enable it:
+#   - install gVisor on the nodes and name its RuntimeClass below;
+#   - create the Secret named by secretName with key KIONGA_SANDBOX_TOKEN (32+
+#     random characters), which the gateway and the manager both read;
+#   - list the API server addresses in kubernetesApiCidrs, including the
+#     `kubernetes` Service ClusterIP and any public endpoint.
+# The chart has no setting for the unsafe runtime flag, and refuses one.
+sandbox:
+  enabled: false
+  replicas: 2
+  # The manager image, sandbox-manager, as repository@sha256:digest.
+  image: ""
+  # The only namespace the manager can write to, and where sandboxes run.
+  namespace: kionga-sandboxes
+  secretName: kionga-sandbox
+  runtimeClassName: gvisor
+  # Create the RuntimeClass too. Leave false when the provider supplies it.
+  createRuntimeClass: false
+  runtimeClassHandler: runsc
+  # Images sandboxes may use, each as repository@sha256:digest.
+  images: []
+  # Hosts git may reach over HTTPS. Empty: git tools are refused and git helper
+  # pods get no egress policy.
+  gitHosts: []
+  ttlSeconds: 86400
+  # IPv4 CIDRs of the API server. The manager may reach them; git helpers may not.
+  kubernetesApiCidrs: []
+  # Other IPv4 ranges git helpers must not reach, for a cluster whose pod, Service
+  # or node ranges fall outside the private ranges, which are always denied along
+  # with the 169.254.0.0/16 metadata range.
+  internalCidrs: []
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 256Mi}
+# Agent team tuning for the gateway. Teams also need agentDesigner.enabled. Empty uses
+# the gateway's default. scheduler can only be off, which applies to every replica.
+agentTeams:
+  turnTimeoutSeconds: ""
+  compactThresholdTokens: ""
+  workerPool: ""
+  sandboxRetentionSeconds: ""
+  scheduler: ""
+# Credentials that knowledge bases, API connections, feature stores, storage
+# connections and platform connections reference as env:NAME. Create secretName with
+# one key per name below; the gateway reads each through secretKeyRef.
+# names: KIONGA_{KB,CONNECTION,FEATURE,STORAGE,PLATFORM}_SECRET_*, KIONGA_QDRANT_KEY,
+# KIONGA_KNOWLEDGE_DSN, KIONGA_AGENT_API_TOKEN, FEAST_TOKEN, LAKE_CREDENTIALS,
+# OPENFAAS_PASSWORD, MLFLOW_TOKEN, KFP_TOKEN, or a name in an allowlist.
+# The allowlists keep a stored reference under another name.
+secretReferences:
+  secretName: kionga-secret-references
+  names: []
+  knowledgeAllowlist: []
+  connectionAllowlist: []
+  featureAllowlist: []
+  storageAllowlist: []
+  platformAllowlist: []
 networkPolicy:
   enabled: true
   # Explicit destination CIDRs/ports for DB, IdP, Kafka REST, engines, object

@@ -38,6 +38,12 @@ spec:
             matchLabels: {kionga.dev/release: {{ .Release.Name }}, app.kubernetes.io/component: agent-designer-runner}
       ports: [{port: 9100}]
     {{- end }}
+    {{- if .Values.sandbox.enabled }}
+    - to:
+        - podSelector:
+            matchLabels: {kionga.dev/release: {{ .Release.Name }}, app.kubernetes.io/component: sandbox-manager}
+      ports: [{port: 8088}]
+    {{- end }}
     {{- with .Values.networkPolicy.externalEgress }}
 {{ toYaml . | indent 4 }}
     {{- end }}

@@ -45,6 +45,13 @@ config:
   WORKSPACE_PREFECT_URL: https://prefect.internal.example.com/api
   WORKSPACE_LANGFUSE_URL: https://langfuse.internal.example.com
   WORKSPACE_KAFKA_REST_URL: https://kafka-rest.internal.example.com
+# Agent team sandboxes, off unless enabled. See helm/kionga/values.yaml.
+#sandbox:
+#  enabled: true
+#  image: ghcr.io/kiongahq/sandbox-manager@sha256:REPLACE
+#  images: [ghcr.io/kiongahq/sandbox@sha256:REPLACE]
+#  gitHosts: [github.com]
+#  kubernetesApiCidrs: [192.0.2.10/32] # Replace; include the kubernetes Service ClusterIP.
 networkPolicy:
   externalEgress:
     - to: [{ipBlock: {cidr: 192.0.2.0/24}}] # Replace; include cluster API address/port.

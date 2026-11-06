@@ -20,7 +20,7 @@ def test_podman_socket_access_does_not_disable_confinement_for_other_services():
         check=True, capture_output=True, text=True,
     )
     services = json.loads(result.stdout)['services']
-    controllers = {'pipeline-runner', 'serving-manager'}
+    controllers = {'pipeline-runner', 'serving-manager', 'sandbox-manager'}
     for name, service in services.items():
         options = service.get('security_opt', [])
         assert ('label=disable' in options) == (name in controllers)

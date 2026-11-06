@@ -1,0 +1,8 @@
+# Added by vm/up.py only when agent_teams.sandbox.git_hosts is not empty. The manager
+# resolves those hosts itself, and an internal network has no external DNS. Only the
+# manager joins this network, and it publishes no port.
+services:
+  sandbox-manager:
+    networks: [sandbox-egress]
+networks:
+  sandbox-egress: {}

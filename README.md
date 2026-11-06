@@ -43,8 +43,8 @@ make local-start              # cached images only: no downloads or builds
   choice is remembered in `.local-state/ports.env` so URLs stay stable. Only a
   port set in the shell for that command (`POSTGRES_PORT=… make local-up`) is
   left as given.
-- **Workspace tokens:** `JUPYTER_TOKEN`, `IDE_PASSWORD` and
-  `KIONGA_WORKSPACE_JOB_TOKEN` are random, generated once and kept in
+- **Workspace tokens:** `JUPYTER_TOKEN`, `IDE_PASSWORD`,
+  `KIONGA_WORKSPACE_JOB_TOKEN` and `KIONGA_SANDBOX_TOKEN` are random, generated once and kept in
   `.local-state/secrets.env` (mode 0600, ignored by Git) so restarts keep working.
   A value in the shell or in `.env` wins, and must be at least 32 characters.
   To rotate them, delete the file and run `make local-up` again.
@@ -96,6 +96,58 @@ it with `make langflow-down`, using the same Docker or Podman engine as the
 rest of Kionga. Open **Agents → Langflow** in the console. The `langflow-data`
 volume keeps local flows across restarts.
 
+### Sandboxes
+
+Agent team sandboxes run under gVisor (`runsc`) through `sandbox-manager`, which
+holds engine socket access, publishes no port and is reachable only by the gateway
+on an internal network. `make local-up` generates `KIONGA_SANDBOX_TOKEN`. The rest
+of the stack does not depend on this service.
+
+| Machine | Result |
+| --- | --- |
+| Engine runs `runsc`, `KIONGA_SANDBOX_IMAGES` lists an image by digest | Sandboxes work |
+| `KIONGA_SANDBOX_IMAGES` empty (the local default) | The manager stays up and creates return 503 `sandbox_unavailable`; set it in `.env` |
+| Engine has no `runsc` (default on macOS and Windows) | Sandbox tools report `sandbox_unavailable`; there is no fallback |
+| Single server (`vm/`) | Off until `agent_teams.sandbox.enabled` in `deployment.json`; `vm/up.py` starts nothing unless a real container runs under gVisor |
+| Legacy public overlay | `runsc` is pinned, `public-up.sh` stops unless a real container runs under gVisor, and the preflight rejects the unsafe flag and requires `KIONGA_SANDBOX_IMAGES` |
+| Helm | Needs a gVisor RuntimeClass; the chart has no setting for the unsafe flag |
+
+On a Linux host, `sudo make sandbox-runtime-install` is an optional way to install
+`runsc` and register it with Docker. It downloads gVisor's release archive, checks
+it against a SHA-512 pinned in `scripts/install-runsc.sh`, and installs `runsc`, the
+containerd shim and the `gvisor-bin/` directory `runsc` needs beside it. Nothing else runs it. `make sandbox-runtime-verify` starts a container and
+reads its kernel release. An engine's runtime list is not proof: Podman lists `runsc`
+even when it is not installed.
+
+For development on a machine without gVisor, you can opt in to a weaker runtime by
+adding both lines to `.env`, then running `make local-up`:
+
+```bash
+KIONGA_SANDBOX_RUNTIME=runc
+KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME=1
+```
+
+This shares the host kernel with code the model wrote, so a kernel exploit escapes
+the sandbox. Do not use it with untrusted input. The manager refuses it when
+`KIONGA_ENVIRONMENT=production` and logs a warning on every create.
+
+### Secret references
+
+Knowledge bases, API connections, feature stores, storage connections and platform
+connections name their credential as `env:NAME`. Each has its own scope, and one
+cannot read another's variables. The gateway resolves a name only with the scope's
+prefix (`KIONGA_KB_SECRET_*`, `KIONGA_CONNECTION_SECRET_*`, `KIONGA_FEATURE_SECRET_*`,
+`KIONGA_STORAGE_SECRET_*` or `KIONGA_PLATFORM_SECRET_*`), a name the scope keeps, or a
+name in the scope's `*_SECRET_REFS` allowlist.
+
+| Path | Where the values go |
+| --- | --- |
+| Single server | Files in `secrets_directory`, listed in `secret_references` in `deployment.json` |
+| Helm | One key per name in the Secret `secretReferences.secretName`, listed in `secretReferences.names` |
+| Local Compose | `config/secrets/gateway.env`, one `NAME=value` per line |
+
+The single-server path needs a gateway image with kiongahq/platform#111.
+
 ### Operating systems and engine choice
 
 Docker is the default: use Docker Engine with Compose on Linux, or Docker Desktop
@@ -139,3 +191,15 @@ runs and the commit conventions.
 ## License
 
 [MIT](LICENCE) © Kionga contributors
+
+### Shared agent runtime authentication
+
+Compose gives the gateway `KIONGA_AGENT_RUNTIME_TOKEN` with the same value as
+the shared agent runtime's `MLAIOPS_INTERNAL_TOKEN`. Set `MLAIOPS_INTERNAL_TOKEN`
+in `.env` for both; public mode requires a non-development value. After rotating
+it, recreate both `gateway` and `agent-runtime`. This wiring requires
+kiongahq/platform#118.
+
+The Compose runtime is shared and does not isolate credentials between agents.
+On Kubernetes, the operator creates a separate runtime Secret in each agent's
+namespace; the gateway reads that agent's Secret when invoking it.

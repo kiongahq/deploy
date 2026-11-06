@@ -254,16 +254,35 @@ services:
       KIONGA_QDRANT_KEY: ${KIONGA_QDRANT_KEY:-}
       KIONGA_KNOWLEDGE_DSN: ${KIONGA_KNOWLEDGE_DSN:-}
       KIONGA_AGENT_API_TOKEN: ${KIONGA_AGENT_API_TOKEN:-}
+      # Extra names a knowledge base or API connection may reference, comma-separated.
+      # The values themselves go in config/secrets/gateway.env, below.
+      KIONGA_KB_SECRET_REFS: ${KIONGA_KB_SECRET_REFS:-}
+      KIONGA_CONNECTION_SECRET_REFS: ${KIONGA_CONNECTION_SECRET_REFS:-}
+      KIONGA_FEATURE_SECRET_REFS: ${KIONGA_FEATURE_SECRET_REFS:-}
+      KIONGA_STORAGE_SECRET_REFS: ${KIONGA_STORAGE_SECRET_REFS:-}
+      KIONGA_PLATFORM_SECRET_REFS: ${KIONGA_PLATFORM_SECRET_REFS:-}
+      # Agent team tuning. Empty uses the gateway's default.
+      KIONGA_AGENT_TURN_TIMEOUT_SECONDS: ${KIONGA_AGENT_TURN_TIMEOUT_SECONDS:-}
+      KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS: ${KIONGA_TEAM_COMPACT_THRESHOLD_TOKENS:-}
+      KIONGA_TEAM_WORKER_POOL: ${KIONGA_TEAM_WORKER_POOL:-}
+      KIONGA_TEAM_SANDBOX_RETENTION_SECONDS: ${KIONGA_TEAM_SANDBOX_RETENTION_SECONDS:-}
+      KIONGA_TEAM_SCHEDULER: ${KIONGA_TEAM_SCHEDULER:-}
       KIONGA_JUPYTER_TOKEN: ${JUPYTER_TOKEN:-}
       # Shared with jupyter and ide: authorizes structured scaffold jobs.
       KIONGA_WORKSPACE_JOB_TOKEN: ${KIONGA_WORKSPACE_JOB_TOKEN:-}
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
+      # Shared Compose runtime authenticates with this value under its legacy name.
+      KIONGA_AGENT_RUNTIME_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
       # Native Agent Designer playground and evaluations run in the isolated
       # runner; it calls back on the internal listener with a run credential.
       KIONGA_AGENT_DESIGNER_RUNNER_URL: http://agent-designer-runner:9100
       KIONGA_AGENT_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:-kionga-local-designer-runner-token}
       KIONGA_AGENT_DESIGNER_CALLBACK_URL: http://gateway:8087/api/v1
+      # Agent team sandboxes. The gateway does not wait for this service: without
+      # it, sandbox tools report sandbox_unavailable and everything else works.
+      KIONGA_SANDBOX_URL: http://sandbox-manager:8088
+      KIONGA_SANDBOX_TOKEN: ${KIONGA_SANDBOX_TOKEN:-}
       STORAGE_PROXY_URL: http://storage-proxy:8084
       PREFECT_API_URL: http://prefect-server:4200/api
       SERVING_MANAGER_URL: http://serving-manager:8085
@@ -304,8 +323,13 @@ services:
       KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
       KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
+    # KIONGA_{KB,CONNECTION,FEATURE,STORAGE,PLATFORM}_SECRET_* values have no fixed
+    # names, so they cannot be listed above. Git ignores this file; it may not exist.
+    env_file:
+      - {path: ./config/secrets/gateway.env, required: false}
     volumes:
       - sso-providers:/etc/kionga/sso:ro
+    networks: [default, sandbox]
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"]
 
   feature-gateway:
@@ -448,7 +472,8 @@ services:
     build:
       context: ${KIONGA_SRC:-..}/serving
     # Root inside this designated engine-control service: the Docker socket
-    # requires it. The pipeline-runner is the only other socket consumer.
+    # requires it. The pipeline-runner and sandbox-manager are the only other
+    # socket consumers.
     user: "0:0"
     volumes:
       - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
@@ -468,6 +493,44 @@ services:
     depends_on:
       objectstore-init: {condition: service_completed_successfully}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${SERVING_MANAGER_PORT:-8085}:8085"]
+
+  # Creates agent team sandboxes through the engine socket, the same root-equivalent
+  # trust boundary as serving-manager. It publishes no port, and only the gateway
+  # shares a network with it (sandbox), with a bearer token.
+  # Sandboxes never get the socket. With no runsc on the engine it stays up and
+  # refuses to create anything; there is no fallback to another runtime. An empty
+  # KIONGA_SANDBOX_IMAGES does the same: creates return 503 until it lists an image.
+  # To use another runtime on a development machine, see "Sandboxes" in README.md.
+  sandbox-manager:
+    restart: unless-stopped
+    build:
+      context: ${KIONGA_SRC:-..}/platform/go
+      dockerfile: Dockerfile
+      args: {SERVICE: sandbox-manager}
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=16m]   # git bundles stream between containers, not through here
+    # sandbox-egress: the manager resolves allowed git hosts itself, and an internal
+    # network has no external DNS (checked on Podman 6.1: NXDOMAIN).
+    networks: [sandbox, sandbox-egress]
+    volumes:
+      - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    environment:
+      PORT: "8088"
+      KIONGA_ENVIRONMENT: ${KIONGA_ENVIRONMENT:-development}
+      KIONGA_SANDBOX_TOKEN: ${KIONGA_SANDBOX_TOKEN:-}
+      KIONGA_SANDBOX_DRIVER: docker
+      KIONGA_SANDBOX_RUNTIME: ${KIONGA_SANDBOX_RUNTIME:-runsc}
+      KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME: ${KIONGA_SANDBOX_ALLOW_UNSAFE_RUNTIME:-}
+      KIONGA_SANDBOX_IMAGES: ${KIONGA_SANDBOX_IMAGES:-}
+      KIONGA_SANDBOX_HELPER_IMAGE: ${KIONGA_SANDBOX_HELPER_IMAGE:-}
+      KIONGA_SANDBOX_GIT_HOSTS: ${KIONGA_SANDBOX_GIT_HOSTS:-}
+      KIONGA_SANDBOX_GIT_NETWORK: ${KIONGA_SANDBOX_GIT_NETWORK:-}
+      KIONGA_SANDBOX_TTL_SECONDS: ${KIONGA_SANDBOX_TTL_SECONDS:-86400}
+      # Empty: negotiate with the daemon, as serving-manager does.
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-}
 
   realtime-processor:
     build:
@@ -521,6 +584,8 @@ services:
       LLM_UPSTREAM_API_KEY: ${LLM_UPSTREAM_API_KEY:-}
       LLM_UPSTREAM_AUTH_HEADER: ${LLM_UPSTREAM_AUTH_HEADER:-}
       LLM_UPSTREAM_AUTH_SCHEME: ${LLM_UPSTREAM_AUTH_SCHEME:-}
+      # Total time for one response, stream included. Empty uses the default, 660.
+      TRACE_PROXY_WRITE_TIMEOUT_SECONDS: ${TRACE_PROXY_WRITE_TIMEOUT_SECONDS:-}
       TRACE_SINK_FORMAT: kafka-rest
       TRACE_SINK_URL: http://kafka-rest:8082/topics/mlaiops.llm.traces
       MLAIOPS_AGENT_NAME: shared
@@ -723,6 +788,14 @@ services:
       KIONGA_WORKSPACE_NAME: local
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
+
+networks:
+  default: {}
+  # No route out of the engine: only the gateway and sandbox-manager join it.
+  sandbox:
+    internal: true
+  # Only sandbox-manager joins this, and it publishes no port.
+  sandbox-egress: {}
 
 volumes:
   sso-providers:

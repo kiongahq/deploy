@@ -1,7 +1,7 @@
 # Run Kionga: the local stack from sibling checkouts, a single VM, or Kubernetes.
 .PHONY: workspace workspace-pull test local local-up local-start local-build-up local-rebuild local-down local-status local-logs \
         ide-up ide-agents-up ide-down langflow-up langflow-down public-up public-down kind-up k8s-tools test-e2e-kind \
-        test-load test-stress smoke
+        test-load test-stress smoke sandbox-runtime-install sandbox-runtime-verify
 
 COMPOSE := bash scripts/container.sh compose -f compose.yaml
 
@@ -57,6 +57,12 @@ sso-reload:                ## re-render Dex after changing KIONGA_*_CLIENT_ID/SE
 
 smoke:                     ## end-to-end smoke test against a running stack
 	GATEWAY=$${GATEWAY:-http://localhost:8080} bash scripts/demo-smoke.sh
+
+sandbox-runtime-install:   ## optional, Linux host, as root: install gVisor (runsc) and register it with Docker
+	bash scripts/install-runsc.sh
+
+sandbox-runtime-verify:    ## start a container and confirm it ran under gVisor
+	bash scripts/check-sandbox-runtime.sh
 
 public-up:                 ## single VM with released images (DEPLOYMENT=/etc/kionga/deployment.json)
 	bash public-up.sh "$(DEPLOYMENT)"
