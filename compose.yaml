@@ -137,13 +137,15 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       objectstore-init: {condition: service_completed_successfully}
-    # Migrate first: a database created by an older MLflow refuses to start
-    # until `mlflow db upgrade` runs (a no-op when already current).
+    # An existing database created by an older MLflow refuses to start until
+    # `mlflow db upgrade` runs. That command fails on an empty database, where the
+    # server creates the schema itself, so it only runs once a schema exists.
     command:
       - sh
       - -c
       - >-
-        mlflow db upgrade "$$BACKEND_STORE_URI" &&
+        if python -c 'import os,sys,sqlalchemy as s; sys.exit(0 if s.inspect(s.create_engine(os.environ["BACKEND_STORE_URI"])).has_table("alembic_version") else 1)';
+        then mlflow db upgrade "$$BACKEND_STORE_URI"; fi &&
         exec mlflow server --host=0.0.0.0 --port=5000
         --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://mlaiops-models
     environment:
