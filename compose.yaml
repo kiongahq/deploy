@@ -147,7 +147,7 @@ services:
         exec mlflow server --host=0.0.0.0 --port=5000
         --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://mlaiops-models
     environment:
-      BACKEND_STORE_URI: postgresql://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops
+      BACKEND_STORE_URI: postgresql+psycopg2://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops
       # MLflow rejects unknown Host headers (DNS-rebinding protection). Allow
       # the in-network name and the published localhost port only.
       MLFLOW_SERVER_ALLOWED_HOSTS: mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
