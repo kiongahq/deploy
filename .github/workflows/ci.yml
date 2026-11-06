@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Clone platform operator
         run: git clone --depth=1 https://github.com/kiongahq/platform.git ../platform
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ../platform/go/go.mod
           cache-dependency-path: ../platform/go/go.sum
