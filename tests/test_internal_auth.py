@@ -51,3 +51,15 @@ def test_public_preflight_requires_the_shared_runtime_token():
     public = yaml.load((ROOT / "compose.public.yaml").read_text(), Loader=Loader)["services"]
     # Public preflight rejects an unset token before either side can use a local default.
     assert "MLAIOPS_INTERNAL_TOKEN:?" in public["public-preflight"]["environment"]["MLAIOPS_INTERNAL_TOKEN"]
+
+
+def test_mlflow_names_the_postgres_driver_its_image_installs():
+    """SQLAlchemy 2.1 made psycopg the default for postgresql://, and the image has psycopg2."""
+    uri = services()["mlflow"]["environment"]["BACKEND_STORE_URI"]
+    assert uri.startswith("postgresql+psycopg2://")
+
+
+def test_mlflow_only_upgrades_a_database_that_has_a_schema():
+    """mlflow db upgrade fails on an empty database, so a new install could never start."""
+    script = services()["mlflow"]["command"][-1]
+    assert script.index('has_table("alembic_version")') < script.index("mlflow db upgrade")
