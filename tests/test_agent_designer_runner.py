@@ -27,4 +27,4 @@ def test_gateway_and_runner_share_one_credential_and_callback():
     assert GATEWAY["KIONGA_AGENT_DESIGNER_RUNNER_URL"] == "http://agent-designer-runner:9100"
     assert GATEWAY["KIONGA_AGENT_DESIGNER_RUNNER_TOKEN"] == runner_env["KIONGA_DESIGNER_RUNNER_TOKEN"]
     assert GATEWAY["KIONGA_AGENT_DESIGNER_CALLBACK_URL"] == "http://gateway:8087/api/v1"
-    assert runner_env["MLAIOPS_LLM_BACKEND"].endswith(":-mock}"), "keyless local stacks run with the mock model"
+    assert runner_env["KIONGA_LLM_BACKEND"].endswith(":-mock}"), "keyless local stacks run with the mock model"

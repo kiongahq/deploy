@@ -4,21 +4,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BROKER="${KAFKA_BROKER:-localhost:9092}"
 topics=(
-  mlaiops.audit.operations
-  mlaiops.pipeline.commands
-  mlaiops.model.commands
-  mlaiops.agent.commands
-  mlaiops.tool.commands
-  mlaiops.connection.commands
-  mlaiops.workspace.commands
-  mlaiops.llm.traces
-  mlaiops.feature.updates
-  mlaiops.transactions
-  mlaiops.fraud.alerts
-  mlaiops.callcenter.transcripts
-  mlaiops.callcenter.insights
-  mlaiops.user.activity
-  mlaiops.recs.results
+  kionga.audit.operations
+  kionga.pipeline.commands
+  kionga.model.commands
+  kionga.agent.commands
+  kionga.tool.commands
+  kionga.connection.commands
+  kionga.workspace.commands
+  kionga.llm.traces
+  kionga.feature.updates
+  kionga.transactions
+  kionga.fraud.alerts
+  kionga.callcenter.transcripts
+  kionga.callcenter.insights
+  kionga.user.activity
+  kionga.recs.results
 )
 
 existing="$(bash "$ROOT/scripts/container.sh" compose -f "$ROOT/compose.yaml" exec -T kafka \

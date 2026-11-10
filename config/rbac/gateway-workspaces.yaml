@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: mlaiops-gateway
-  namespace: mlaiops-system
+  name: kionga-gateway
+  namespace: kionga-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: mlaiops-workspace-discovery
+  name: kionga-workspace-discovery
   namespace: default
 rules:
-  - apiGroups: [mlaiops.io]
+  - apiGroups: [kionga.dev]
     resources: [kiongaworkspaces]
     verbs: [get, list]
   - apiGroups: [""]
@@ -20,13 +20,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: mlaiops-workspace-discovery
+  name: kionga-workspace-discovery
   namespace: default
 subjects:
   - kind: ServiceAccount
-    name: mlaiops-gateway
-    namespace: mlaiops-system
+    name: kionga-gateway
+    namespace: kionga-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: mlaiops-workspace-discovery
+  name: kionga-workspace-discovery

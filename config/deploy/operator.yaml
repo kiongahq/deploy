@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mlaiops-operator
-  namespace: mlaiops-system
+  name: kionga-operator
+  namespace: kionga-system
 spec:
   replicas: 2
   selector:
-    matchLabels: {app: mlaiops-operator}
+    matchLabels: {app: kionga-operator}
   template:
     metadata:
-      labels: {app: mlaiops-operator}
+      labels: {app: kionga-operator}
     spec:
-      serviceAccountName: mlaiops-operator
+      serviceAccountName: kionga-operator
       containers:
         - name: operator
           image: ghcr.io/kiongahq/operator:latest
@@ -20,16 +20,16 @@ spec:
             - {name: ENVIRONMENT, value: production}
             - {name: TRACE_PROXY_IMAGE, value: "ghcr.io/kiongahq/trace-proxy:latest"}
             - {name: KFP_URL, value: "http://ml-pipeline.kubeflow:8888"}
-            - {name: MLFLOW_URL, value: "http://mlflow.mlaiops-system:5000"}
-            - {name: MLAIOPS_URL, value: "http://mlaiops-gateway.mlaiops-system:8080"}
+            - {name: MLFLOW_URL, value: "http://mlflow.kionga-system:5000"}
+            - {name: KIONGA_URL, value: "http://kionga-gateway.kionga-system:8080"}
             - {name: WORKBENCH_IMAGE, value: "ghcr.io/kiongahq/jupyter:latest"}
             - {name: IDE_IMAGE, value: "ghcr.io/kiongahq/ide:latest"}
-            - {name: WORKSPACE_FEATURE_URL, value: "http://mlaiops-feature-gateway.mlaiops-system:8083"}
-            - {name: WORKSPACE_STORAGE_URL, value: "http://mlaiops-storage-proxy.mlaiops-system:8084"}
-            - {name: WORKSPACE_MLFLOW_URL, value: "http://mlflow.mlaiops-system:5000"}
-            - {name: WORKSPACE_PREFECT_URL, value: "http://prefect-server.mlaiops-system:4200/api"}
-            - {name: WORKSPACE_LANGFUSE_URL, value: "http://langfuse.mlaiops-system:3000"}
-            - {name: WORKSPACE_KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
+            - {name: WORKSPACE_FEATURE_URL, value: "http://kionga-feature-gateway.kionga-system:8083"}
+            - {name: WORKSPACE_STORAGE_URL, value: "http://kionga-storage-proxy.kionga-system:8084"}
+            - {name: WORKSPACE_MLFLOW_URL, value: "http://mlflow.kionga-system:5000"}
+            - {name: WORKSPACE_PREFECT_URL, value: "http://prefect-server.kionga-system:4200/api"}
+            - {name: WORKSPACE_LANGFUSE_URL, value: "http://langfuse.kionga-system:3000"}
+            - {name: WORKSPACE_KAFKA_REST_URL, value: "http://kafka-rest.kionga-system:8082"}
           ports:
             - {name: metrics, containerPort: 8080}
             - {name: health, containerPort: 8082}

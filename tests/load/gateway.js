@@ -16,8 +16,8 @@ import http from "k6/http";
 import { check } from "k6";
 import { Trend, Rate } from "k6/metrics";
 
-const baseURL = __ENV.MLAIOPS_URL || "http://localhost:8080";
-const token = __ENV.MLAIOPS_TOKEN;
+const baseURL = __ENV.KIONGA_URL || "http://localhost:8080";
+const token = __ENV.KIONGA_TOKEN;
 const profile = __ENV.PROFILE || "full";
 
 const readLatency = new Trend("read_latency", true);
@@ -102,13 +102,13 @@ export const options = {
 export function setup() {
   if (token) return { headers: { Authorization: `Bearer ${token}` } };
   const login = http.post(`${baseURL}/auth/local/login`, {
-    username: __ENV.MLAIOPS_LOCAL_USERNAME || "admin",
-    password: __ENV.MLAIOPS_LOCAL_PASSWORD || "mlaiops-local",
+    username: __ENV.KIONGA_LOCAL_USERNAME || "admin",
+    password: __ENV.KIONGA_LOCAL_PASSWORD || "kionga-local",
     return_to: "/console",
   }, { redirects: 0 });
   const session = login.cookies.kionga_local_session;
   if (!session || !session[0] || !session[0].value) {
-    throw new Error(`sign-in failed (status ${login.status}); set MLAIOPS_TOKEN or local credentials`);
+    throw new Error(`sign-in failed (status ${login.status}); set KIONGA_TOKEN or local credentials`);
   }
   return { headers: { Cookie: `kionga_local_session=${session[0].value}` } };
 }

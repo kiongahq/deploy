@@ -74,7 +74,7 @@ class FakeS3:
 
 def source():
     return FakeS3({
-        "mlaiops-models": {"m/1/model.pkl": {"data": b"model-bytes", "type": "application/octet-stream",
+        "kionga-models": {"m/1/model.pkl": {"data": b"model-bytes", "type": "application/octet-stream",
                                              "meta": {"run": "r1"}}},
         "kionga-blog-media": {"a.png": {"data": b"\x89PNG..", "type": "image/png"},
                               "big.bin": {"data": b"x" * 50}},
@@ -95,8 +95,8 @@ def test_copies_every_bucket_and_object_with_metadata(tmp_path):
     src, dst = source(), FakeS3()
     totals = mig.migrate(src, dst, tmp_path, clock())
     assert totals.failed == 0 and totals.copied == 3 and totals.objects == 3
-    assert set(dst.buckets) == {"mlaiops-models", "kionga-blog-media", "empty-bucket"}
-    model = dst.buckets["mlaiops-models"]["m/1/model.pkl"]
+    assert set(dst.buckets) == {"kionga-models", "kionga-blog-media", "empty-bucket"}
+    model = dst.buckets["kionga-models"]["m/1/model.pkl"]
     assert model["data"] == b"model-bytes" and model["meta"] == {"run": "r1"}
     assert dst.buckets["kionga-blog-media"]["a.png"]["type"] == "image/png"
     assert src.writes == 0                       # the source is only read
@@ -114,15 +114,15 @@ def test_rerun_resumes_without_copying_again(tmp_path):
 
 def test_same_size_but_different_content_is_recopied(tmp_path):
     src = source()
-    dst = FakeS3({"mlaiops-models": {"m/1/model.pkl": {"data": b"MODEL-BYTES"}}})
+    dst = FakeS3({"kionga-models": {"m/1/model.pkl": {"data": b"MODEL-BYTES"}}})
     totals = mig.migrate(src, dst, tmp_path, clock())
-    assert dst.buckets["mlaiops-models"]["m/1/model.pkl"]["data"] == b"model-bytes"
+    assert dst.buckets["kionga-models"]["m/1/model.pkl"]["data"] == b"model-bytes"
     assert totals.copied == 3
 
 
 def test_corruption_is_reported_and_fails_the_run(tmp_path):
     src = source()
-    dst = FakeS3(corrupt=("mlaiops-models", "m/1/model.pkl"))
+    dst = FakeS3(corrupt=("kionga-models", "m/1/model.pkl"))
     totals = mig.migrate(src, dst, tmp_path, clock())
     assert totals.failed == 1
     rows = list(csv.DictReader((tmp_path / "report.csv").open()))

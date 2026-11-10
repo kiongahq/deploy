@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: dex
-  namespace: mlaiops-system
+  namespace: kionga-system
 data:
   config.yaml: |
     issuer: https://dex.example.com
@@ -15,11 +15,11 @@ data:
     oauth2:
       skipApprovalScreen: true
     staticClients:
-      - id: mlaiops
+      - id: kionga
         name: Kionga MLOps
         secretEnv: DEX_CLIENT_SECRET
         redirectURIs:
-          - https://mlaiops.example.com/callback
+          - https://kionga.example.com/callback
     enablePasswordDB: false
     connectors:
       - type: github
@@ -36,7 +36,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dex
-  namespace: mlaiops-system
+  namespace: kionga-system
 spec:
   replicas: 2
   selector:
@@ -61,7 +61,7 @@ spec:
 ---
 apiVersion: v1
 kind: ServiceAccount
-metadata: {name: dex, namespace: mlaiops-system}
+metadata: {name: dex, namespace: kionga-system}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -75,11 +75,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata: {name: dex}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: dex}
-subjects: [{kind: ServiceAccount, name: dex, namespace: mlaiops-system}]
+subjects: [{kind: ServiceAccount, name: dex, namespace: kionga-system}]
 ---
 apiVersion: v1
 kind: Service
-metadata: {name: dex, namespace: mlaiops-system}
+metadata: {name: dex, namespace: kionga-system}
 spec:
   selector: {app: dex}
   ports: [{name: http, port: 5556, targetPort: http}]

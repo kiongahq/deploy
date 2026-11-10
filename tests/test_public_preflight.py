@@ -46,7 +46,7 @@ def preflight_table():
 
 
 def run_preflight(env, shell="sh"):
-    clean = {k: v for k, v in os.environ.items() if not k.startswith(("KIONGA_", "DEX_", "MLAIOPS_", "LANGFUSE_", "LANGFLOW_"))}
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(("KIONGA_", "DEX_", "KIONGA_", "LANGFUSE_", "LANGFLOW_"))}
     for name in preflight_table():
         clean.pop(name, None)
     return subprocess.run([shell, str(PREFLIGHT)], capture_output=True, text=True, env={**clean, **env})
@@ -54,10 +54,10 @@ def run_preflight(env, shell="sh"):
 
 def test_local_defaults_are_found():
     # Guards the parser: these are the defaults the issue was filed about.
-    assert LOCAL_DEFAULTS["LANGFUSE_INIT_USER_PASSWORD"] == "mlaiops-local-admin"
-    assert LOCAL_DEFAULTS["LANGFUSE_NEXTAUTH_SECRET"] == "mlaiops-local-nextauth"
-    assert LOCAL_DEFAULTS["POSTGRES_PASSWORD"] == "mlaiops-local"
-    assert LOCAL_DEFAULTS["OBJECTSTORE_SECRET_KEY"] == "mlaiops-local-secret"
+    assert LOCAL_DEFAULTS["LANGFUSE_INIT_USER_PASSWORD"] == "kionga-local-admin"
+    assert LOCAL_DEFAULTS["LANGFUSE_NEXTAUTH_SECRET"] == "kionga-local-nextauth"
+    assert LOCAL_DEFAULTS["POSTGRES_PASSWORD"] == "kionga-local"
+    assert LOCAL_DEFAULTS["OBJECTSTORE_SECRET_KEY"] == "kionga-local-secret"
 
 
 def test_compose_yaml_has_no_inline_credentials():
@@ -133,11 +133,11 @@ def test_preflight_rejects_each_local_default(var, default):
 
 
 def test_preflight_rejects_a_default_reused_under_another_name():
-    result = run_preflight({**PUBLIC_ENV, "LANGFUSE_SALT": "mlaiops-local-admin"})
+    result = run_preflight({**PUBLIC_ENV, "LANGFUSE_SALT": "kionga-local-admin"})
     assert result.returncode == 1 and "LANGFUSE_SALT uses a built-in local default" in result.stderr
 
 
-@pytest.mark.parametrize("var", ["LANGFUSE_INIT_USER_PASSWORD", "MLAIOPS_DOMAIN", "POSTGRES_PASSWORD"])
+@pytest.mark.parametrize("var", ["LANGFUSE_INIT_USER_PASSWORD", "KIONGA_DOMAIN", "POSTGRES_PASSWORD"])
 def test_preflight_rejects_a_missing_value(var):
     env = {k: v for k, v in PUBLIC_ENV.items() if k != var}
     result = run_preflight(env)
@@ -163,7 +163,7 @@ def test_public_up_refuses_a_local_default(tmp_path):
     shutil.copy(ROOT / "public-up.sh", tmp_path / "public-up.sh")
     (tmp_path / "scripts").mkdir()
     shutil.copy(PREFLIGHT, tmp_path / "scripts" / "public-preflight.sh")
-    env = {**PUBLIC_ENV, "LANGFUSE_INIT_USER_PASSWORD": "mlaiops-local-admin"}
+    env = {**PUBLIC_ENV, "LANGFUSE_INIT_USER_PASSWORD": "kionga-local-admin"}
     (tmp_path / ".env").write_text("".join(f"{k}='{v}'\n" for k, v in env.items()))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -182,7 +182,7 @@ def test_preflight_runs_in_the_caddy_image(public):
     if not shutil.which("docker") or subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode:
         pytest.skip(f"{image} is not pulled")
     args = ["docker", "run", "--rm", "-v", f"{PREFLIGHT}:/kionga/public-preflight.sh:ro", "--entrypoint", "/bin/sh"]
-    for key, value in {**PUBLIC_ENV, "JUPYTER_TOKEN": "mlaiops-local"}.items():
+    for key, value in {**PUBLIC_ENV, "JUPYTER_TOKEN": "kionga-local"}.items():
         args += ["-e", f"{key}={value}"]
     result = subprocess.run([*args, image, "/kionga/public-preflight.sh"], capture_output=True, text=True)
     assert result.returncode == 1 and "JUPYTER_TOKEN uses a built-in local default" in result.stderr
@@ -198,5 +198,5 @@ def test_local_stack_keeps_its_defaults():
     # Local mode still boots with no .env: the preflight is public-only.
     local = compose_config("compose.yaml")
     assert "public-preflight" not in local
-    assert local["postgres"]["environment"]["POSTGRES_PASSWORD"] == "mlaiops-local"
+    assert local["postgres"]["environment"]["POSTGRES_PASSWORD"] == "kionga-local"
     assert local["mlflow"]["environment"]["AWS_SECRET_ACCESS_KEY"] == local["objectstore"]["environment"]["RUSTFS_SECRET_KEY"]

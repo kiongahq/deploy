@@ -48,7 +48,7 @@ def test_agents_call_the_proxy_with_the_project_key_not_the_provider_key(agent):
     env = compose_config("compose.yaml", env={"OPENAI_API_KEY": "sk-provider", "LLM_UPSTREAM_API_KEY": "sk-provider",
                                               "TRACE_PROXY_PROJECT_KEY": "the-project-key"})[agent]["environment"]
     assert env["OPENAI_API_KEY"] == "the-project-key"
-    assert env["MLAIOPS_LLM_BASE_URL"] == "http://trace-proxy:8081/v1"
+    assert env["KIONGA_LLM_BASE_URL"] == "http://trace-proxy:8081/v1"
     assert "sk-provider" not in env.values()
 
 

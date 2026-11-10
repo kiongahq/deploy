@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mlaiops-integration-worker
-  namespace: mlaiops-system
+  name: kionga-integration-worker
+  namespace: kionga-system
 spec:
   replicas: 2
   selector:
-    matchLabels: {app: mlaiops-integration-worker}
+    matchLabels: {app: kionga-integration-worker}
   template:
     metadata:
-      labels: {app: mlaiops-integration-worker}
+      labels: {app: kionga-integration-worker}
     spec:
-      serviceAccountName: mlaiops-operator
+      serviceAccountName: kionga-operator
       containers:
         - name: worker
           image: ghcr.io/kiongahq/integration-worker:latest
           env:
-            - {name: KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
-            - {name: MLAIOPS_TARGET_NAMESPACE, value: default}
+            - {name: KAFKA_REST_URL, value: "http://kafka-rest.kionga-system:8082"}
+            - {name: KIONGA_TARGET_NAMESPACE, value: default}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

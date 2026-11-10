@@ -67,12 +67,12 @@ spec:
             {{- if eq $name "gateway" }}
             - {name: METRICS_PORT, value: "9090"}
             {{- end }}
-            - {name: MLAIOPS_TARGET_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
-            - {name: MLAIOPS_CONTROL_NAMESPACE, value: {{ $.Release.Namespace | quote }}}
-            - {name: MLAIOPS_AGENT_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
+            - {name: KIONGA_TARGET_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
+            - {name: KIONGA_CONTROL_NAMESPACE, value: {{ $.Release.Namespace | quote }}}
+            - {name: KIONGA_AGENT_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
             - {name: KIONGA_WORKSPACE_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
             - {name: WORKSPACE_STORAGE_CLASS, value: {{ $.Values.storageClass | quote }}}
-            - {name: MLAIOPS_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8080"}
+            - {name: KIONGA_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8080"}
             {{- if and (eq $name "gateway") $.Values.pipelineExecutor.kubernetes }}
             - {name: KIONGA_EXECUTOR, value: kubernetes}
             - {name: KIONGA_K8S_NAMESPACE, value: {{ $.Values.pipelineExecutor.namespace | quote }}}
@@ -112,7 +112,7 @@ spec:
             {{- $refs := . }}
             {{- /* The gateway refuses these at resolve time; stop here rather than overwrite one. */ -}}
             {{- $exempt := list "OPENFAAS_PASSWORD" "MLFLOW_TOKEN" "KFP_TOKEN" }}
-            {{- $own := concat $exempt (list "DATABASE_URL" "OIDC_CLIENT_SECRET" "MLAIOPS_INTERNAL_TOKEN" "KIONGA_CREDENTIAL_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "REDIS_URL" "KAFKA_REST_TOKEN" "LANGFUSE_SECRET_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "LLM_UPSTREAM_API_KEY" "KIONGA_JUPYTER_TOKEN" "KIONGA_IDE_PASSWORD" "TRACE_SINK_TOKEN" "MLAIOPS_LOCAL_PASSWORD" "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN" "KIONGA_DESIGNER_RUNNER_TOKEN" "KIONGA_SANDBOX_TOKEN" "KIONGA_KB_SECRET_REFS" "KIONGA_CONNECTION_SECRET_REFS" "KIONGA_FEATURE_SECRET_REFS" "KIONGA_STORAGE_SECRET_REFS" "KIONGA_PLATFORM_SECRET_REFS") }}
+            {{- $own := concat $exempt (list "DATABASE_URL" "OIDC_CLIENT_SECRET" "KIONGA_INTERNAL_TOKEN" "KIONGA_CREDENTIAL_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "REDIS_URL" "KAFKA_REST_TOKEN" "LANGFUSE_SECRET_KEY" "OPENAI_API_KEY" "ANTHROPIC_API_KEY" "LLM_UPSTREAM_API_KEY" "KIONGA_JUPYTER_TOKEN" "KIONGA_IDE_PASSWORD" "TRACE_SINK_TOKEN" "KIONGA_LOCAL_PASSWORD" "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN" "KIONGA_DESIGNER_RUNNER_TOKEN" "KIONGA_SANDBOX_TOKEN" "KIONGA_KB_SECRET_REFS" "KIONGA_CONNECTION_SECRET_REFS" "KIONGA_FEATURE_SECRET_REFS" "KIONGA_STORAGE_SECRET_REFS" "KIONGA_PLATFORM_SECRET_REFS") }}
             {{- $allowed := concat .knowledgeAllowlist .connectionAllowlist .featureAllowlist .storageAllowlist .platformAllowlist }}
             {{- range $allowed }}
             {{- if has . $own }}{{ fail (printf "secretReferences cannot name %s" .) }}{{ end }}

@@ -69,9 +69,9 @@ spec:
             - {name: KIONGA_DESIGNER_RUNNER_TOKEN_FILE, value: /run/secrets/designer/KIONGA_DESIGNER_RUNNER_TOKEN}
             - {name: KIONGA_DESIGNER_PORT, value: "9100"}
             - {name: KIONGA_DESIGNER_MAX_RUNS, value: {{ $d.maxRuns | quote }}}
-            - {name: MLAIOPS_LLM_BACKEND, value: {{ $d.llm.backend | quote }}}
-            - {name: MLAIOPS_LLM_MODEL, value: {{ $d.llm.model | quote }}}
-            - {name: MLAIOPS_LLM_BASE_URL, value: "http://{{ .Release.Name }}-trace-proxy.{{ .Release.Namespace }}.svc:8081/v1"}
+            - {name: KIONGA_LLM_BACKEND, value: {{ $d.llm.backend | quote }}}
+            - {name: KIONGA_LLM_MODEL, value: {{ $d.llm.model | quote }}}
+            - {name: KIONGA_LLM_BASE_URL, value: "http://{{ .Release.Name }}-trace-proxy.{{ .Release.Namespace }}.svc:8081/v1"}
             # The SDK reads this name; the value authenticates to the trace-proxy,
             # which holds the provider key.
             - name: OPENAI_API_KEY

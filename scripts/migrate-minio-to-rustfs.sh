@@ -13,15 +13,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-PROJECT="${COMPOSE_PROJECT_NAME:-mlaiops}"
+PROJECT="${COMPOSE_PROJECT_NAME:-kionga}"
 SRC_VOLUME="${MINIO_VOLUME:-${PROJECT}_minio-data}"
 PINNED_MINIO="minio/minio:RELEASE.2025-07-23T15-54-02Z"
 FALLBACK_MINIO="cgr.dev/chainguard/minio:latest"   # still pullable; only used to read the old volume
 OUT="${OUT:-/tmp/minio-to-rustfs}"
 NETWORK="${PROJECT}_default"
 SOURCE="kionga-minio-migration-source"
-SRC_USER="${MINIO_ROOT_USER:-mlaiops}"
-SRC_PASS="${MINIO_ROOT_PASSWORD:-mlaiops-local-secret}"
+SRC_USER="${MINIO_ROOT_USER:-kionga}"
+SRC_PASS="${MINIO_ROOT_PASSWORD:-kionga-local-secret}"
 
 fail() { echo "migrate-minio-to-rustfs: $*" >&2; exit 1; }
 
@@ -38,7 +38,7 @@ fi
 docker image inspect "$MINIO_IMAGE" >/dev/null 2>&1 || docker pull -q "$MINIO_IMAGE" >/dev/null \
   || fail "cannot get MinIO image '$MINIO_IMAGE'; set MINIO_IMAGE to one you can pull"
 echo "==> reading the old volume with $MINIO_IMAGE"
-docker image inspect mlaiops-mlflow >/dev/null 2>&1 || fail "mlaiops-mlflow image missing; run 'make local-up' once first."
+docker image inspect kionga-mlflow >/dev/null 2>&1 || fail "kionga-mlflow image missing; run 'make local-up' once first."
 
 echo "==> starting the RustFS object store"
 bash scripts/container.sh compose -f compose.yaml up -d --wait objectstore
@@ -53,7 +53,7 @@ docker run -d --rm --name "$SOURCE" --network "$NETWORK" --user 0:0 \
 trap 'docker stop "$SOURCE" >/dev/null 2>&1 || true' EXIT
 # Probe from the network: minimal images have no curl.
 source_live() {
-  docker run --rm --network "$NETWORK" --entrypoint python mlaiops-mlflow -c \
+  docker run --rm --network "$NETWORK" --entrypoint python kionga-mlflow -c \
     "import urllib.request; urllib.request.urlopen('http://$SOURCE:9000/minio/health/live', timeout=3)" \
     >/dev/null 2>&1
 }
@@ -67,9 +67,9 @@ docker run --rm --network "$NETWORK" \
   -v "$ROOT/scripts/migrate_objects.py:/migrate/migrate_objects.py:ro" -v "$OUT:/out" \
   -e "SOURCE_ENDPOINT=http://$SOURCE:9000" -e "SOURCE_ACCESS_KEY=$SRC_USER" -e "SOURCE_SECRET_KEY=$SRC_PASS" \
   -e "DEST_ENDPOINT=http://objectstore:9000" \
-  -e "DEST_ACCESS_KEY=${OBJECTSTORE_ACCESS_KEY:-mlaiops}" \
-  -e "DEST_SECRET_KEY=${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}" \
-  --entrypoint python mlaiops-mlflow /migrate/migrate_objects.py --out /out || status=$?
+  -e "DEST_ACCESS_KEY=${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}" \
+  -e "DEST_SECRET_KEY=${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}" \
+  --entrypoint python kionga-mlflow /migrate/migrate_objects.py --out /out || status=$?
 
 echo "==> summary ($OUT/summary.json, per-object rows in $OUT/report.csv)"
 cat "$OUT/summary.json" 2>/dev/null || true

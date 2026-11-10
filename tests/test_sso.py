@@ -18,10 +18,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = {"admin", "operator", "engineer", "user", "viewer"}
 PUBLIC_ENV = {
-    "MLAIOPS_DOMAIN": "kionga.example.com", "MLAIOPS_ACME_EMAIL": "ops@example.com",
+    "KIONGA_DOMAIN": "kionga.example.com", "KIONGA_ACME_EMAIL": "ops@example.com",
     "DEX_CLIENT_SECRET": "public-client-secret", "DEX_ADMIN_EMAIL": "admin@example.com",
-    "DEX_ADMIN_PASSWORD_HASH": "$2y$10$hash", "MLAIOPS_INTERNAL_TOKEN": "internal",
-    "MLAIOPS_LOCAL_PASSWORD": "break-glass",
+    "DEX_ADMIN_PASSWORD_HASH": "$2y$10$hash", "KIONGA_INTERNAL_TOKEN": "internal",
+    "KIONGA_LOCAL_PASSWORD": "break-glass",
     # Every credential compose.yaml defaults must be supplied in public mode
     # (scripts/public-preflight.sh, tests/test_public_preflight.py).
     **{name: f"public-{name.lower().replace('_', '-')}" for name in (
@@ -45,7 +45,7 @@ OAUTH_ENV = {
 def compose_config(*files, env=None):
     if not shutil.which("docker"):
         pytest.skip("Docker Compose is required for config validation")
-    clean = {k: v for k, v in os.environ.items() if not k.startswith(("KIONGA_", "DEX_", "MLAIOPS_", "OIDC_"))}
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(("KIONGA_", "DEX_", "KIONGA_", "OIDC_"))}
     args = ["docker", "compose"]
     for name in files:
         args += ["-f", str(ROOT / name)]
@@ -106,7 +106,7 @@ def test_local_up_starts_every_sign_in_method(local, local_render):
     config, providers = local_render
     assert [p["id"] for p in providers] == ["ldap", "mock"]
     env = local["gateway"]["environment"]
-    assert env["KIONGA_LOCAL_LOGIN"] == "true" and env["MLAIOPS_LOCAL_PASSWORD"]
+    assert env["KIONGA_LOCAL_LOGIN"] == "true" and env["KIONGA_LOCAL_PASSWORD"]
     assert env["KIONGA_SIGNUP"] == "approval"
     assert local["gateway"]["depends_on"]["dex"]["condition"] == "service_healthy"
     assert "glauth" in local and "profiles" not in local["glauth"]
@@ -183,12 +183,12 @@ def test_public_overlay_keeps_dex_without_the_local_only_parts(public, public_re
     assert "glauth" not in public  # behind the local-directory profile
     env = public["gateway"]["environment"]
     assert env["OIDC_ISSUER"] == dex["issuer"] and env["OIDC_CLIENT_SECRET"] == "public-client-secret"
-    assert env["MLAIOPS_LOCAL_PASSWORD"] == "break-glass"
+    assert env["KIONGA_LOCAL_PASSWORD"] == "break-glass"
 
 
 def test_public_overlay_requires_a_break_glass_password():
-    env = {k: v for k, v in PUBLIC_ENV.items() if k != "MLAIOPS_LOCAL_PASSWORD"}
-    with pytest.raises(AssertionError, match="MLAIOPS_LOCAL_PASSWORD"):
+    env = {k: v for k, v in PUBLIC_ENV.items() if k != "KIONGA_LOCAL_PASSWORD"}
+    with pytest.raises(AssertionError, match="KIONGA_LOCAL_PASSWORD"):
         compose_config("compose.yaml", "compose.public.yaml", env=env)
 
 

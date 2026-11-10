@@ -41,11 +41,11 @@ jobs:
           kubectl create namespace kionga-system
           kubectl create namespace kionga-workloads
           kubectl apply -f config/crd/
-          kubectl wait --for=condition=Established crd/kiongaworkspaces.mlaiops.io --timeout=90s
+          kubectl wait --for=condition=Established crd/kiongaworkspaces.kionga.dev --timeout=90s
       - name: Reconcile Langflow workspace
         run: |
-          MLAIOPS_TARGET_NAMESPACE=kionga-workloads \
-          MLAIOPS_CONTROL_NAMESPACE=kionga-system \
+          KIONGA_TARGET_NAMESPACE=kionga-workloads \
+          KIONGA_CONTROL_NAMESPACE=kionga-system \
           LANGFLOW_IMAGE=registry.k8s.io/pause:3.9 \
           LANGFLOW_SIDECAR_IMAGE=registry.k8s.io/pause:3.9 \
           "$RUNNER_TEMP/kionga-operator" --leader-elect=false --metrics-bind-address=127.0.0.1:18080 --health-probe-bind-address=127.0.0.1:18082 >"$RUNNER_TEMP/kionga-operator.log" 2>&1 &

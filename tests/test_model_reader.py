@@ -44,8 +44,8 @@ def test_policy_only_reads_the_model_buckets():
     [statement] = init.READER_POLICY["Statement"]
     assert statement["Effect"] == "Allow"
     assert sorted(statement["Action"]) == ["s3:GetBucketLocation", "s3:GetObject", "s3:ListBucket"]
-    assert sorted(statement["Resource"]) == ["arn:aws:s3:::mlaiops-artifacts", "arn:aws:s3:::mlaiops-artifacts/*",
-                                             "arn:aws:s3:::mlaiops-models", "arn:aws:s3:::mlaiops-models/*"]
+    assert sorted(statement["Resource"]) == ["arn:aws:s3:::kionga-artifacts", "arn:aws:s3:::kionga-artifacts/*",
+                                             "arn:aws:s3:::kionga-models", "arn:aws:s3:::kionga-models/*"]
     assert set(init.READER_BUCKETS) <= set(init.BUCKETS)
 
 
@@ -60,7 +60,7 @@ def test_refuses_a_reader_that_can_write_and_removes_the_probe():
     root = FakeS3()
     with pytest.raises(RuntimeError, match="can write"):
         init.ensure_model_reader("http://store", root, lambda *args: None, "id", "secret", reader=FakeS3(deny_writes=False))
-    assert root.calls == [("delete", {"Bucket": "mlaiops-models", "Key": init.READER_CHECK_KEY})]
+    assert root.calls == [("delete", {"Bucket": "kionga-models", "Key": init.READER_CHECK_KEY})]
 
 
 def test_other_write_failures_are_not_mistaken_for_read_only():

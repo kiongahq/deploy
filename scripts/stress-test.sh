@@ -15,16 +15,16 @@
 set -uo pipefail
 
 export GATEWAY="${GATEWAY:-http://localhost:8080}"
-# Credentials: an API key (MLAIOPS_TOKEN), or a local sign-in, as demo-smoke.sh.
-if [ -n "${MLAIOPS_TOKEN:-}" ]; then
-  export AUTH_HEADER="Authorization: Bearer ${MLAIOPS_TOKEN}"
+# Credentials: an API key (KIONGA_TOKEN), or a local sign-in, as demo-smoke.sh.
+if [ -n "${KIONGA_TOKEN:-}" ]; then
+  export AUTH_HEADER="Authorization: Bearer ${KIONGA_TOKEN}"
 else
   login_cookie="$(curl -sS -D - -o /dev/null \
-    --data-urlencode "username=${MLAIOPS_LOCAL_USERNAME:-admin}" \
-    --data-urlencode "password=${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}" \
+    --data-urlencode "username=${KIONGA_LOCAL_USERNAME:-admin}" \
+    --data-urlencode "password=${KIONGA_LOCAL_PASSWORD:-kionga-local}" \
     "$GATEWAY/auth/local/login" | tr -d '\r' | awk 'tolower($1)=="set-cookie:" {print $2}' | cut -d';' -f1)"
   if [ -z "$login_cookie" ]; then
-    printf 'Sign-in failed. Set MLAIOPS_TOKEN to an API key, or supply the local login credentials.\n' >&2
+    printf 'Sign-in failed. Set KIONGA_TOKEN to an API key, or supply the local login credentials.\n' >&2
     exit 1
   fi
   export AUTH_HEADER="Cookie: $login_cookie"

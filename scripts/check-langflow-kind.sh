@@ -6,10 +6,10 @@ namespace=kionga-workloads
 name=langflow-smoke
 kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f config/crd/
-kubectl wait --for=condition=Established crd/kiongaworkspaces.mlaiops.io --timeout=90s
+kubectl wait --for=condition=Established crd/kiongaworkspaces.kionga.dev --timeout=90s
 
 cat <<YAML | kubectl apply -f -
-apiVersion: mlaiops.io/v1alpha1
+apiVersion: kionga.dev/v1alpha1
 kind: KiongaWorkspace
 metadata:
   name: $name
@@ -78,9 +78,9 @@ kubectl delete pod langflow-storage-write -n "$namespace" --wait=true
 kubectl patch kiongaworkspace "$name" -n "$namespace" --type=merge -p '{"spec":{"disabled":false}}'
 kubectl wait --for=jsonpath='{.spec.replicas}'=1 deployment/$name -n "$namespace" --timeout=90s
 restart_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-kubectl annotate kiongaworkspace "$name" -n "$namespace" "mlaiops.io/restart-at=$restart_at"
+kubectl annotate kiongaworkspace "$name" -n "$namespace" "kionga.dev/restart-at=$restart_at"
 for attempt in $(seq 1 30); do
-  observed="$(kubectl get deployment "$name" -n "$namespace" -o jsonpath='{.spec.template.metadata.annotations.mlaiops\.io/restart-at}')"
+  observed="$(kubectl get deployment "$name" -n "$namespace" -o jsonpath='{.spec.template.metadata.annotations.kionga\.dev/restart-at}')"
   if [[ "$observed" == "$restart_at" ]]; then break; fi
   sleep 2
 done
@@ -93,7 +93,7 @@ test "$(kubectl exec -n "$namespace" langflow-storage-read -- cat /workspace/flo
 kubectl delete pod langflow-storage-read -n "$namespace" --wait=true
 
 cat <<YAML | kubectl apply -f -
-apiVersion: mlaiops.io/v1alpha1
+apiVersion: kionga.dev/v1alpha1
 kind: KiongaAgent
 metadata:
   name: langflow-published-smoke

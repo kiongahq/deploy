@@ -1,9 +1,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: kiongaworkspaces.mlaiops.io
+  name: kiongaworkspaces.kionga.dev
 spec:
-  group: mlaiops.io
+  group: kionga.dev
   scope: Namespaced
   names:
     plural: kiongaworkspaces

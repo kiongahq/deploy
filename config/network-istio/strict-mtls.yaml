@@ -2,7 +2,7 @@ apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
-  namespace: mlaiops-system
+  namespace: kionga-system
 spec:
   mtls:
     mode: STRICT

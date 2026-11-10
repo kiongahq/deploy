@@ -5,8 +5,8 @@
 //   k6 run tests/load/agent-designer.js                  # full run (~4 min)
 //   k6 run -e PROFILE=smoke tests/load/agent-designer.js # ~60 s
 //
-// MLAIOPS_URL, MLAIOPS_TOKEN or MLAIOPS_LOCAL_USERNAME/PASSWORD as in
-// gateway.js. The runner should use the mock model (MLAIOPS_LLM_BACKEND=mock)
+// KIONGA_URL, KIONGA_TOKEN or KIONGA_LOCAL_USERNAME/PASSWORD as in
+// gateway.js. The runner should use the mock model (KIONGA_LLM_BACKEND=mock)
 // so the numbers measure Kionga, not a model provider.
 //
 // Scenarios:
@@ -20,8 +20,8 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Trend, Rate, Counter } from "k6/metrics";
 
-const baseURL = __ENV.MLAIOPS_URL || "http://localhost:8080";
-const token = __ENV.MLAIOPS_TOKEN;
+const baseURL = __ENV.KIONGA_URL || "http://localhost:8080";
+const token = __ENV.KIONGA_TOKEN;
 const SHORT = (__ENV.PROFILE || "full") === "smoke";
 
 const runLatency = new Trend("run_end_to_end", true);
@@ -65,13 +65,13 @@ export const options = {
 function signIn() {
   if (token) return { Authorization: `Bearer ${token}` };
   const login = http.post(`${baseURL}/auth/local/login`, {
-    username: __ENV.MLAIOPS_LOCAL_USERNAME || "admin",
-    password: __ENV.MLAIOPS_LOCAL_PASSWORD || "mlaiops-local",
+    username: __ENV.KIONGA_LOCAL_USERNAME || "admin",
+    password: __ENV.KIONGA_LOCAL_PASSWORD || "kionga-local",
     return_to: "/console",
   }, { redirects: 0 });
   const session = login.cookies.kionga_local_session;
   if (!session || !session[0] || !session[0].value) {
-    throw new Error(`sign-in failed (status ${login.status}); set MLAIOPS_TOKEN or local credentials`);
+    throw new Error(`sign-in failed (status ${login.status}); set KIONGA_TOKEN or local credentials`);
   }
   return { Cookie: `kionga_local_session=${session[0].value}` };
 }

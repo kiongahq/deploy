@@ -20,7 +20,7 @@ command -v kubectl >/dev/null
 helm lint "$root/helm/kionga" "${values_args[@]}" --namespace "$namespace" --strict
 kubectl --context "$context" get namespace "$namespace" >/dev/null
 for crd in kiongaagents kiongaworkspaces kiongapipelineruns kiongamodelpromotions kiongatools kiongaconnections; do
-  kubectl --context "$context" get crd "$crd.mlaiops.io" >/dev/null
+  kubectl --context "$context" get crd "$crd.kionga.dev" >/dev/null
 done
 rendered="$(helm template kionga "$root/helm/kionga" --namespace "$namespace" "${values_args[@]}")"
 if [[ "$rendered" == *'kind: ExternalSecret'* ]]; then

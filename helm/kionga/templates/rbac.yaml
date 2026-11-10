@@ -4,7 +4,7 @@ metadata:
   name: {{ .Release.Name }}-operator
   namespace: {{ .Values.workspaceNamespace }}
 rules:
-  - apiGroups: [mlaiops.io]
+  - apiGroups: [kionga.dev]
     resources: [kiongaagents, kiongaagents/status, kiongaworkspaces, kiongaworkspaces/status, kiongapipelineruns, kiongapipelineruns/status, kiongamodelpromotions, kiongamodelpromotions/status, kiongatools, kiongatools/status, kiongaconnections, kiongaconnections/status]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [apps]
@@ -38,7 +38,7 @@ metadata:
   name: {{ .Release.Name }}-worker
   namespace: {{ .Values.workspaceNamespace }}
 rules:
-  - apiGroups: [mlaiops.io]
+  - apiGroups: [kionga.dev]
     resources: [kiongaagents, kiongaworkspaces, kiongapipelineruns, kiongamodelpromotions, kiongatools, kiongaconnections]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
@@ -57,10 +57,10 @@ metadata:
   name: {{ .Release.Name }}-discovery
   namespace: {{ .Values.workspaceNamespace }}
 rules:
-  - apiGroups: [mlaiops.io]
+  - apiGroups: [kionga.dev]
     resources: [kiongaworkspaces]
     verbs: [get, list, create, update, delete]
-  - apiGroups: [mlaiops.io]
+  - apiGroups: [kionga.dev]
     resources: [kiongaagents]
     verbs: [get, list]
   - apiGroups: [metrics.k8s.io]
@@ -97,7 +97,7 @@ rules:
   - apiGroups: [networking.istio.io, serving.kserve.io]
     resources: [virtualservices, destinationrules, inferenceservices]
     verbs: [get, list, watch]
-  - apiGroups: [mlaiops.io, apps, autoscaling, ""]
+  - apiGroups: [kionga.dev, apps, autoscaling, ""]
     resources: [kiongaagents, kiongaworkspaces, kiongapipelineruns, kiongamodelpromotions, kiongatools, kiongaconnections, deployments, horizontalpodautoscalers, services, persistentvolumeclaims, secrets, configmaps]
     verbs: [get, list, watch]
 ---

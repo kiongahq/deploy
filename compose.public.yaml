@@ -4,7 +4,7 @@
 # Requirements: a DNS record pointing at this VM and a filled-in .env
 # (see .env.example). No service is swapped — local == deployed.
 
-name: mlaiops
+name: kionga
 
 services:
   # Refuses to start the public stack with a missing setting or a credential
@@ -19,12 +19,12 @@ services:
     volumes:
       - ./scripts/public-preflight.sh:/kionga/public-preflight.sh:ro
     environment:
-      MLAIOPS_DOMAIN: ${MLAIOPS_DOMAIN:?set MLAIOPS_DOMAIN in .env}
-      MLAIOPS_ACME_EMAIL: ${MLAIOPS_ACME_EMAIL:?set MLAIOPS_ACME_EMAIL in .env}
+      KIONGA_DOMAIN: ${KIONGA_DOMAIN:?set KIONGA_DOMAIN in .env}
+      KIONGA_ACME_EMAIL: ${KIONGA_ACME_EMAIL:?set KIONGA_ACME_EMAIL in .env}
       DEX_ADMIN_EMAIL: ${DEX_ADMIN_EMAIL:?set DEX_ADMIN_EMAIL in .env}
       DEX_ADMIN_PASSWORD_HASH: ${DEX_ADMIN_PASSWORD_HASH:?set DEX_ADMIN_PASSWORD_HASH in .env}
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:?set MLAIOPS_INTERNAL_TOKEN in .env (see .env.example)}
-      MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:?set MLAIOPS_LOCAL_PASSWORD in .env (see .env.example)}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:?set KIONGA_INTERNAL_TOKEN in .env (see .env.example)}
+      KIONGA_LOCAL_PASSWORD: ${KIONGA_LOCAL_PASSWORD:?set KIONGA_LOCAL_PASSWORD in .env (see .env.example)}
       DEX_CLIENT_SECRET: ${DEX_CLIENT_SECRET:?set DEX_CLIENT_SECRET in .env (see .env.example)}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
       OBJECTSTORE_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:?set OBJECTSTORE_ACCESS_KEY in .env (see .env.example)}
@@ -59,8 +59,8 @@ services:
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
-      MLAIOPS_DOMAIN: ${MLAIOPS_DOMAIN:?set MLAIOPS_DOMAIN in .env}
-      MLAIOPS_ACME_EMAIL: ${MLAIOPS_ACME_EMAIL:?set MLAIOPS_ACME_EMAIL in .env}
+      KIONGA_DOMAIN: ${KIONGA_DOMAIN:?set KIONGA_DOMAIN in .env}
+      KIONGA_ACME_EMAIL: ${KIONGA_ACME_EMAIL:?set KIONGA_ACME_EMAIL in .env}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -70,7 +70,7 @@ services:
       public-preflight: {condition: service_completed_successfully}
 
   # The same Dex as locally (compose.yaml, sso/dex.yaml), served at
-  # https://$MLAIOPS_DOMAIN/dex: Dex's own email + password admin account and
+  # https://$KIONGA_DOMAIN/dex: Dex's own email + password admin account and
   # any connector whose KIONGA_*_CLIENT_ID is set. The test directory and the
   # demo account are off.
   glauth:
@@ -80,8 +80,8 @@ services:
     depends_on:
       public-preflight: {condition: service_completed_successfully}
     environment:
-      DEX_ISSUER: https://${MLAIOPS_DOMAIN}/dex
-      KIONGA_GATEWAY_URL: https://${MLAIOPS_DOMAIN}
+      DEX_ISSUER: https://${KIONGA_DOMAIN}/dex
+      KIONGA_GATEWAY_URL: https://${KIONGA_DOMAIN}
       DEX_KIONGA_CLIENT_SECRET: ${DEX_CLIENT_SECRET:?set DEX_CLIENT_SECRET in .env}
       KIONGA_SSO_LDAP: ${KIONGA_SSO_LDAP:-false}
       KIONGA_SSO_DEMO: "false"
@@ -100,14 +100,14 @@ services:
       public-preflight: {condition: service_completed_successfully}
     environment:
       # Same Dex client as locally; the browser reaches Dex through Caddy.
-      OIDC_ISSUER: https://${MLAIOPS_DOMAIN}/dex
-      OIDC_AUTH_URL: https://${MLAIOPS_DOMAIN}/dex/auth
+      OIDC_ISSUER: https://${KIONGA_DOMAIN}/dex
+      OIDC_AUTH_URL: https://${KIONGA_DOMAIN}/dex/auth
       OIDC_CLIENT_SECRET: ${DEX_CLIENT_SECRET}
-      OIDC_REDIRECT_URL: https://${MLAIOPS_DOMAIN}/auth/callback
+      OIDC_REDIRECT_URL: https://${KIONGA_DOMAIN}/auth/callback
       # Break-glass local admin next to single sign-on: never the local default.
-      MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:?set MLAIOPS_LOCAL_PASSWORD in .env (break-glass admin)}
-      MLAIOPS_ALLOWED_ORIGIN: https://${MLAIOPS_DOMAIN}
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:?set MLAIOPS_INTERNAL_TOKEN in .env}
+      KIONGA_LOCAL_PASSWORD: ${KIONGA_LOCAL_PASSWORD:?set KIONGA_LOCAL_PASSWORD in .env (break-glass admin)}
+      KIONGA_ALLOWED_ORIGIN: https://${KIONGA_DOMAIN}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:?set KIONGA_INTERNAL_TOKEN in .env}
     ports: !reset []  # only reachable through Caddy
 
   # Internal services keep running exactly as locally, restarted on failure.
@@ -125,7 +125,7 @@ services:
       public-preflight: {condition: service_completed_successfully}
     ports: !reset []
     environment:
-      NEXTAUTH_URL: https://${MLAIOPS_DOMAIN}/langfuse
+      NEXTAUTH_URL: https://${KIONGA_DOMAIN}/langfuse
   # Operator-provided keys: public mode never uses keys generated for a laptop.
   trace-proxy:
     restart: unless-stopped
@@ -136,7 +136,7 @@ services:
     restart: unless-stopped
     ports: !reset []
     environment:
-      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN}
       OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?set TRACE_PROXY_PROJECT_KEY in .env (see .env.example)}
   agent-designer-runner:
     environment:
@@ -145,17 +145,17 @@ services:
     restart: unless-stopped
     ports: !reset []
     environment:
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN}
   storage-proxy:
     restart: unless-stopped
     ports: !reset []
     environment:
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN}
   serving-manager:
     restart: unless-stopped
     ports: !reset []
     environment:
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN}
       AWS_ACCESS_KEY_ID: ${SERVING_OBJECTSTORE_ACCESS_KEY:?set SERVING_OBJECTSTORE_ACCESS_KEY in .env (see .env.example)}
       AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECTSTORE_SECRET_KEY:?set SERVING_OBJECTSTORE_SECRET_KEY in .env (see .env.example)}
   # Public mode runs sandboxes under gVisor or not at all. These are literals, so
@@ -176,10 +176,10 @@ services:
   jupyter: {restart: unless-stopped, ports: !reset [], depends_on: {public-preflight: {condition: service_completed_successfully}}}
   pipeline-runner:
     environment:
-      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN}
   realtime-processor:
     environment:
-      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN}
+      KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN}
 
 volumes:
   caddy-data:

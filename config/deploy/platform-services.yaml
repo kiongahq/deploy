@@ -1,39 +1,39 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: mlaiops-system
+  name: kionga-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mlaiops-gateway
-  namespace: mlaiops-system
+  name: kionga-gateway
+  namespace: kionga-system
 spec:
   replicas: 2
   selector:
-    matchLabels: {app: mlaiops-gateway}
+    matchLabels: {app: kionga-gateway}
   template:
     metadata:
-      labels: {app: mlaiops-gateway}
+      labels: {app: kionga-gateway}
     spec:
-      serviceAccountName: mlaiops-gateway
+      serviceAccountName: kionga-gateway
       containers:
         - name: gateway
           image: ghcr.io/kiongahq/gateway:latest
           envFrom:
-            - secretRef: {name: mlaiops-openfaas, optional: true}
+            - secretRef: {name: kionga-openfaas, optional: true}
           env:
             - {name: PORT, value: "8080"}
             - name: DATABASE_URL
               valueFrom:
-                secretKeyRef: {name: mlaiops-postgres, key: database-url}
-            - {name: MLAIOPS_TENANT, value: default}
-            - {name: KAFKA_REST_URL, value: "http://kafka-rest.mlaiops-system:8082"}
-            - {name: MLAIOPS_AGENT_NAMESPACE, value: default}
+                secretKeyRef: {name: kionga-postgres, key: database-url}
+            - {name: KIONGA_TENANT, value: default}
+            - {name: KAFKA_REST_URL, value: "http://kafka-rest.kionga-system:8082"}
+            - {name: KIONGA_AGENT_NAMESPACE, value: default}
             - {name: KIONGA_WORKSPACE_NAMESPACE, value: default}
             - {name: KIONGA_LANGFLOW_AGENT_IMAGE, value: "ghcr.io/kiongahq/langflow-agent-runtime:latest"}
             - {name: OIDC_ISSUER, value: "https://dex.example.com"}
-            - {name: OIDC_AUDIENCE, value: mlaiops}
+            - {name: OIDC_AUDIENCE, value: kionga}
             - {name: OIDC_JWKS_URL, value: "https://dex.example.com/keys"}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /api/v1/health, port: http}}
@@ -43,23 +43,23 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: mlaiops-gateway
-  namespace: mlaiops-system
+  name: kionga-gateway
+  namespace: kionga-system
 spec:
-  selector: {app: mlaiops-gateway}
+  selector: {app: kionga-gateway}
   ports: [{name: http, port: 8080, targetPort: http}]
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mlaiops-feature-gateway
-  namespace: mlaiops-system
+  name: kionga-feature-gateway
+  namespace: kionga-system
 spec:
   replicas: 2
   selector:
-    matchLabels: {app: mlaiops-feature-gateway}
+    matchLabels: {app: kionga-feature-gateway}
   template:
-    metadata: {labels: {app: mlaiops-feature-gateway}}
+    metadata: {labels: {app: kionga-feature-gateway}}
     spec:
       containers:
         - name: feature-gateway
@@ -72,19 +72,19 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mlaiops-storage-proxy
-  namespace: mlaiops-system
+  name: kionga-storage-proxy
+  namespace: kionga-system
 spec:
   replicas: 2
   selector:
-    matchLabels: {app: mlaiops-storage-proxy}
+    matchLabels: {app: kionga-storage-proxy}
   template:
-    metadata: {labels: {app: mlaiops-storage-proxy}}
+    metadata: {labels: {app: kionga-storage-proxy}}
     spec:
       containers:
         - name: storage-proxy
           image: ghcr.io/kiongahq/storage-proxy:latest
-          envFrom: [{secretRef: {name: mlaiops-storage-credentials}}]
+          envFrom: [{secretRef: {name: kionga-storage-credentials}}]
           ports: [{name: http, containerPort: 8084}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           livenessProbe: {httpGet: {path: /healthz, port: http}}
@@ -93,14 +93,14 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mlaiops-metrics-collector
-  namespace: mlaiops-system
+  name: kionga-metrics-collector
+  namespace: kionga-system
 spec:
   replicas: 1
   selector:
-    matchLabels: {app: mlaiops-metrics-collector}
+    matchLabels: {app: kionga-metrics-collector}
   template:
-    metadata: {labels: {app: mlaiops-metrics-collector}}
+    metadata: {labels: {app: kionga-metrics-collector}}
     spec:
       containers:
         - name: collector

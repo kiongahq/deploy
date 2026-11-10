@@ -13,7 +13,7 @@ import time
 import urllib.parse
 import urllib.request
 
-REQUIRED_SECRETS = ("DATABASE_URL", "OIDC_CLIENT_SECRET", "MLAIOPS_INTERNAL_TOKEN", "KIONGA_CREDENTIAL_KEY")
+REQUIRED_SECRETS = ("DATABASE_URL", "OIDC_CLIENT_SECRET", "KIONGA_INTERNAL_TOKEN", "KIONGA_CREDENTIAL_KEY")
 TEAM_SECRETS = ("KIONGA_DESIGNER_RUNNER_TOKEN", "TRACE_PROXY_PROJECT_KEY", "TRACE_PROXY_KEYS", "LLM_UPSTREAM_API_KEY")
 SANDBOX_SECRETS = ("KIONGA_SANDBOX_TOKEN",)
 # Shared bearer tokens: long enough that guessing them is not an option.
@@ -42,11 +42,11 @@ REFERENCE_NAMES = ("KIONGA_QDRANT_KEY", "KIONGA_KNOWLEDGE_DSN", "KIONGA_AGENT_AP
 REFERENCE_EXEMPT = ("OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN")
 # Mirrors runtimeconfig.SecretNames in platform; the gateway refuses these too. A test
 # compares the two when platform is checked out beside this repository.
-GATEWAY_OWN_SECRETS = ("DATABASE_URL", "OIDC_CLIENT_SECRET", "MLAIOPS_INTERNAL_TOKEN", "KIONGA_CREDENTIAL_KEY",
+GATEWAY_OWN_SECRETS = ("DATABASE_URL", "OIDC_CLIENT_SECRET", "KIONGA_INTERNAL_TOKEN", "KIONGA_CREDENTIAL_KEY",
                        "S3_ACCESS_KEY", "S3_SECRET_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "REDIS_URL",
                        "KAFKA_REST_TOKEN", "KFP_TOKEN", "MLFLOW_TOKEN", "OPENFAAS_PASSWORD", "LANGFUSE_SECRET_KEY",
                        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LLM_UPSTREAM_API_KEY", "KIONGA_JUPYTER_TOKEN",
-                       "KIONGA_IDE_PASSWORD", "TRACE_SINK_TOKEN", "MLAIOPS_LOCAL_PASSWORD",
+                       "KIONGA_IDE_PASSWORD", "TRACE_SINK_TOKEN", "KIONGA_LOCAL_PASSWORD",
                        "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN", "KIONGA_DESIGNER_RUNNER_TOKEN", "KIONGA_SANDBOX_TOKEN")
 # There is deliberately no key for a runtime or the unsafe flag.
 SANDBOX_KEYS = {"enabled", "manager_image", "images", "git_hosts"}
@@ -139,7 +139,7 @@ def deployment_environment(path):
         raise ValueError("acme_email is required")
     config = Path(data["config_file"]).resolve(strict=True)
     values = json.loads(config.read_text())
-    if values.get("MLAIOPS_ALLOWED_ORIGIN") != "https://" + data["domain"]:
+    if values.get("KIONGA_ALLOWED_ORIGIN") != "https://" + data["domain"]:
         raise ValueError("config public origin must match the deployment domain")
     if any(key.startswith("KIONGA_SANDBOX_") for key in values):
         raise ValueError("sandbox settings belong in agent_teams.sandbox in the deployment file, not the config file")

@@ -1,7 +1,7 @@
 {
   "KIONGA_ENVIRONMENT": "production",
-  "MLAIOPS_TENANT": "default",
-  "MLAIOPS_ALLOWED_ORIGIN": "https://kionga.example.com",
+  "KIONGA_TENANT": "default",
+  "KIONGA_ALLOWED_ORIGIN": "https://kionga.example.com",
   "OIDC_ISSUER": "https://identity.example.com/realms/kionga",
   "OIDC_JWKS_URL": "https://identity.example.com/realms/kionga/protocol/openid-connect/certs",
   "OIDC_AUDIENCE": "kionga",

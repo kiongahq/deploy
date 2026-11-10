@@ -30,7 +30,7 @@ config:
   OIDC_AUTH_URL: ""
   OIDC_TOKEN_URL: ""
   OIDC_REDIRECT_URL: ""
-  MLAIOPS_ALLOWED_ORIGIN: ""
+  KIONGA_ALLOWED_ORIGIN: ""
   KAFKA_REST_URL: ""
   MLFLOW_URL: ""
   PREFECT_API_URL: ""
@@ -61,7 +61,7 @@ components:
     port: 8080
     health: /api/v1/health
     ready: /api/v1/ready
-    secrets: [DATABASE_URL, OIDC_CLIENT_SECRET, MLAIOPS_INTERNAL_TOKEN, KIONGA_CREDENTIAL_KEY]
+    secrets: [DATABASE_URL, OIDC_CLIENT_SECRET, KIONGA_INTERNAL_TOKEN, KIONGA_CREDENTIAL_KEY]
   operator:
     replicas: 2
     port: 8082
@@ -79,13 +79,13 @@ components:
     port: 8083
     health: /healthz
     ready: /healthz
-    secrets: [REDIS_URL, MLAIOPS_INTERNAL_TOKEN]
+    secrets: [REDIS_URL, KIONGA_INTERNAL_TOKEN]
   storage-proxy:
     replicas: 2
     port: 8084
     health: /healthz
     ready: /healthz
-    secrets: [S3_ACCESS_KEY, S3_SECRET_KEY, MLAIOPS_INTERNAL_TOKEN]
+    secrets: [S3_ACCESS_KEY, S3_SECRET_KEY, KIONGA_INTERNAL_TOKEN]
   trace-proxy:
     replicas: 2
     port: 8081

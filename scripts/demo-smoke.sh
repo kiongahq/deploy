@@ -12,15 +12,15 @@ set -uo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
 gateway_auth=()
-if [[ -n "${MLAIOPS_TOKEN:-}" ]]; then
-  gateway_auth=(-H "Authorization: Bearer ${MLAIOPS_TOKEN}")
+if [[ -n "${KIONGA_TOKEN:-}" ]]; then
+  gateway_auth=(-H "Authorization: Bearer ${KIONGA_TOKEN}")
 else
   login_cookie="$(command curl -sS -D - -o /dev/null \
-    --data-urlencode "username=${MLAIOPS_LOCAL_USERNAME:-admin}" \
-    --data-urlencode "password=${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}" \
+    --data-urlencode "username=${KIONGA_LOCAL_USERNAME:-admin}" \
+    --data-urlencode "password=${KIONGA_LOCAL_PASSWORD:-kionga-local}" \
     "$GATEWAY/auth/local/login" | tr -d '\r' | awk 'tolower($1)=="set-cookie:" {print $2}' | cut -d';' -f1)"
   if [[ -z "$login_cookie" ]]; then
-    printf 'Sign-in failed. Set MLAIOPS_TOKEN to a scoped API key, or supply the local login credentials.\n' >&2
+    printf 'Sign-in failed. Set KIONGA_TOKEN to a scoped API key, or supply the local login credentials.\n' >&2
     exit 1
   fi
   gateway_auth=(-H "Cookie: $login_cookie")
@@ -99,7 +99,7 @@ for tool in feature_store_lookup kb_search; do
   fi
 done
 agent_id=$(curl -sf -X POST "$GATEWAY/api/v1/agents" \
-  -d "{\"project_id\":\"$project_id\",\"name\":\"customer-support\",\"version\":\"1.0\",\"image\":\"mlaiops/agent-runtime\",\"graph_module\":\"agents.customer_support.graph:build\",\"llm_backend\":\"${MLAIOPS_LLM_BACKEND:-mock}\",\"tools\":[\"feature_store_lookup\",\"kb_search\"]}" | jqget "d['id']")
+  -d "{\"project_id\":\"$project_id\",\"name\":\"customer-support\",\"version\":\"1.0\",\"image\":\"kionga/agent-runtime\",\"graph_module\":\"agents.customer_support.graph:build\",\"llm_backend\":\"${KIONGA_LLM_BACKEND:-mock}\",\"tools\":[\"feature_store_lookup\",\"kb_search\"]}" | jqget "d['id']")
 if [[ -z "$agent_id" ]]; then
   bad "agent deployment"
 else
@@ -123,7 +123,7 @@ echo "$lookup" | grep -q '"plan"' && ok "online lookup from Redis: $(echo "$look
 say "== 7. object storage"
 buckets=$(curl -sf "$GATEWAY/api/v1/storage/buckets" | jqget "len(d['buckets'])")
 [[ "${buckets:-0}" -ge 4 ]] && ok "buckets browsable ($buckets)" || bad "storage browse"
-snapshot=$(curl -sf "$GATEWAY/api/v1/storage/objects?bucket=mlaiops-features&prefix=customer_profile/" | jqget "len(d['objects'])")
+snapshot=$(curl -sf "$GATEWAY/api/v1/storage/objects?bucket=kionga-features&prefix=customer_profile/" | jqget "len(d['objects'])")
 [[ "${snapshot:-0}" -ge 1 ]] && ok "offline snapshot present" || bad "offline snapshot missing"
 
 say "== 8. real-time processing"
