@@ -80,7 +80,7 @@ kubectl wait --for=jsonpath='{.spec.replicas}'=1 deployment/$name -n "$namespace
 restart_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 kubectl annotate kiongaworkspace "$name" -n "$namespace" "kionga.dev/restart-at=$restart_at"
 for attempt in $(seq 1 30); do
-  observed="$(kubectl get deployment "$name" -n "$namespace" -o jsonpath='{.spec.template.metadata.annotations.kionga\.io/restart-at}')"
+  observed="$(kubectl get deployment "$name" -n "$namespace" -o jsonpath='{.spec.template.metadata.annotations.kionga\.dev/restart-at}')"
   if [[ "$observed" == "$restart_at" ]]; then break; fi
   sleep 2
 done
