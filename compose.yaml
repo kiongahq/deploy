@@ -7,7 +7,7 @@
 # `make workspace` clones any that are missing. KIONGA_SDK_SOURCE=release builds
 # the Python images against the SDK and platform releases instead of the local
 # checkouts. Released, digest-pinned images for a server live in vm/compose.yaml.
-name: mlaiops
+name: kionga
 
 services:
   postgres:
@@ -16,15 +16,15 @@ services:
     # used by agent long-term memory and RAG.
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: mlaiops
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlaiops-local}
-      POSTGRES_DB: mlaiops
+      POSTGRES_USER: kionga
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kionga-local}
+      POSTGRES_DB: kionga
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U mlaiops]
+      test: [CMD-SHELL, pg_isready -U kionga]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -99,8 +99,8 @@ services:
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_CONSOLE_ENABLE: "true"
       RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
-      RUSTFS_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      RUSTFS_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      RUSTFS_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      RUSTFS_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${OBJECTSTORE_PORT:-9000}:9000", "${KIONGA_BIND_ADDRESS:-127.0.0.1}:${OBJECTSTORE_CONSOLE_PORT:-9001}:9001"]
     volumes: [objectstore-data:/data]
     healthcheck:
@@ -113,15 +113,15 @@ services:
   objectstore-init:
     # Creates the platform buckets (idempotent). Reuses the MLflow build, which
     # already includes boto3.
-    image: mlaiops-mlflow
+    image: kionga-mlflow
     build:
       context: mlflow
     depends_on:
       objectstore: {condition: service_healthy}
     entrypoint: [python, /bootstrap/objectstore-init.py]
     environment:
-      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
       S3_ENDPOINT: http://objectstore:9000
       # The read-only user this job creates for the serving manager.
       SERVING_OBJECTSTORE_ACCESS_KEY: ${SERVING_OBJECTSTORE_ACCESS_KEY:?SERVING_OBJECTSTORE_ACCESS_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
@@ -131,7 +131,7 @@ services:
 
   mlflow:
     restart: unless-stopped
-    image: mlaiops-mlflow
+    image: kionga-mlflow
     build:
       context: mlflow
     depends_on:
@@ -147,15 +147,15 @@ services:
         if python -c 'import os,sys,sqlalchemy as s; sys.exit(0 if s.inspect(s.create_engine(os.environ["BACKEND_STORE_URI"])).has_table("alembic_version") else 1)';
         then mlflow db upgrade "$$BACKEND_STORE_URI"; fi &&
         exec mlflow server --host=0.0.0.0 --port=5000
-        --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://mlaiops-models
+        --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://kionga-models
     environment:
-      BACKEND_STORE_URI: postgresql+psycopg2://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops
+      BACKEND_STORE_URI: postgresql+psycopg2://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga
       # MLflow rejects unknown Host headers (DNS-rebinding protection). Allow
       # the in-network name and the published localhost port only.
       MLFLOW_SERVER_ALLOWED_HOSTS: mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${MLFLOW_PORT:-15000}:5000"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -238,11 +238,11 @@ services:
       objectstore-init: {condition: service_completed_successfully}
       dex: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
       KIONGA_LOG_EXPORTER_URL: ${KIONGA_LOG_EXPORTER_URL:-http://log-exporter:8086}
-      MLAIOPS_TENANT: local
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_TENANT: local
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
       KIONGA_JUPYTER_UPSTREAM: http://jupyter:8888
       KIONGA_CREDENTIAL_KEY: ${KIONGA_CREDENTIAL_KEY:-}
       # Repository integration is independent of the Dex GitHub sign-in connector.
@@ -275,7 +275,7 @@ services:
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       AGENT_RUNTIME_URL: http://agent-runtime:9000
       # Shared Compose runtime authenticates with this value under its legacy name.
-      KIONGA_AGENT_RUNTIME_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_AGENT_RUNTIME_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
       # Native Agent Designer playground and evaluations run in the isolated
       # runner; it calls back on the internal listener with a run credential.
       KIONGA_AGENT_DESIGNER_RUNNER_URL: http://agent-designer-runner:9100
@@ -296,7 +296,7 @@ services:
       OPENFAAS_PASSWORD: ${OPENFAAS_PASSWORD:-}
       # Local-mode RBAC role for unauthenticated requests: admin | operator |
       # user | engineer | viewer. Public deployments use OIDC claims instead.
-      MLAIOPS_LOCAL_ROLE: ${MLAIOPS_LOCAL_ROLE:-admin}
+      KIONGA_LOCAL_ROLE: ${KIONGA_LOCAL_ROLE:-admin}
       # Sign-in: single sign-on through Dex (browser at localhost, gateway at
       # dex:5556, one issuer) plus local accounts as break-glass.
       OIDC_ISSUER: ${DEX_ISSUER:-http://localhost:${DEX_PORT:-5556}/dex}
@@ -317,13 +317,13 @@ services:
       KIONGA_SIGNUP_EMAIL_DOMAINS: ${KIONGA_SIGNUP_EMAIL_DOMAINS:-}
       KIONGA_SIGNUP_PROFILE: ${KIONGA_SIGNUP_PROFILE:-starter}
       KIONGA_LOCAL_LOGIN: "true"
-      MLAIOPS_LOCAL_USERNAME: ${MLAIOPS_LOCAL_USERNAME:-admin}
-      MLAIOPS_LOCAL_PASSWORD: ${MLAIOPS_LOCAL_PASSWORD:-mlaiops-local}
+      KIONGA_LOCAL_USERNAME: ${KIONGA_LOCAL_USERNAME:-admin}
+      KIONGA_LOCAL_PASSWORD: ${KIONGA_LOCAL_PASSWORD:-kionga-local}
       # Engineering blog media (images) live in object storage.
       KIONGA_BLOG_MEDIA_BACKEND: s3
       KIONGA_BLOG_MEDIA_S3_ENDPOINT: http://objectstore:9000
-      KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      KIONGA_BLOG_MEDIA_S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      KIONGA_BLOG_MEDIA_S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
       KIONGA_BLOG_MEDIA_BUCKET: kionga-blog-media
     # KIONGA_{KB,CONNECTION,FEATURE,STORAGE,PLATFORM}_SECRET_* values have no fixed
     # names, so they cannot be listed above. Git ignores this file; it may not exist.
@@ -343,7 +343,7 @@ services:
     depends_on:
       redis: {condition: service_healthy}
     environment:
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
       REDIS_URL: redis://redis:6379
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${FEATURE_GATEWAY_PORT:-8083}:8083"]
 
@@ -360,8 +360,8 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
-      MLAIOPS_TENANT: ${MLAIOPS_TENANT:-default}
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
+      KIONGA_TENANT: ${KIONGA_TENANT:-default}
       KIONGA_LOG_EXPORT_TARGET: ${KIONGA_LOG_EXPORT_TARGET:-}
       KIONGA_LOG_EXPORT_URL: ${KIONGA_LOG_EXPORT_URL:-}
       KIONGA_LOG_EXPORT_USERNAME: ${KIONGA_LOG_EXPORT_USERNAME:-}
@@ -397,10 +397,10 @@ services:
     depends_on:
       objectstore: {condition: service_healthy}
     environment:
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
       S3_ENDPOINT: http://objectstore:9000
-      S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      S3_ACCESS_KEY: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      S3_SECRET_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${STORAGE_PROXY_PORT:-8084}:8084"]
 
   langfuse:
@@ -409,22 +409,22 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgresql://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/langfuse
+      DATABASE_URL: postgresql://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/langfuse
       NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
-      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mlaiops-local-nextauth}
-      SALT: ${LANGFUSE_SALT:-mlaiops-local-salt}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-kionga-local-nextauth}
+      SALT: ${LANGFUSE_SALT:-kionga-local-salt}
       TELEMETRY_ENABLED: "false"
       # Headless init so the stack boots with working keys; override for
       # anything public.
-      LANGFUSE_INIT_ORG_ID: mlaiops
-      LANGFUSE_INIT_ORG_NAME: mlaiops
-      LANGFUSE_INIT_PROJECT_ID: mlaiops-local
-      LANGFUSE_INIT_PROJECT_NAME: mlaiops-local
+      LANGFUSE_INIT_ORG_ID: kionga
+      LANGFUSE_INIT_ORG_NAME: kionga
+      LANGFUSE_INIT_PROJECT_ID: kionga-local
+      LANGFUSE_INIT_PROJECT_NAME: kionga-local
       LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
       LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@local.dev}
       LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Local Admin}
-      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-mlaiops-local-admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-kionga-local-admin}
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${LANGFUSE_PORT:-3000}:3000"]
 
   prefect-server:
@@ -449,17 +449,17 @@ services:
       mlflow: {condition: service_healthy}
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
-      MLAIOPS_URL: http://gateway:8080
-      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_URL: http://gateway:8080
+      KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
       DOCKER_HOST: unix:///var/run/docker.sock
-      MLAIOPS_PIPELINE_NETWORK: mlaiops_default
-      MLAIOPS_PIPELINE_LOG_LIMIT_BYTES: ${MLAIOPS_PIPELINE_LOG_LIMIT_BYTES:-65536}
-      MLAIOPS_PIPELINE_JOB_TIMEOUT_SECONDS: ${MLAIOPS_PIPELINE_JOB_TIMEOUT_SECONDS:-3600}
-      MLAIOPS_PIPELINE_PIDS_LIMIT: ${MLAIOPS_PIPELINE_PIDS_LIMIT:-256}
+      KIONGA_PIPELINE_NETWORK: kionga_default
+      KIONGA_PIPELINE_LOG_LIMIT_BYTES: ${KIONGA_PIPELINE_LOG_LIMIT_BYTES:-65536}
+      KIONGA_PIPELINE_JOB_TIMEOUT_SECONDS: ${KIONGA_PIPELINE_JOB_TIMEOUT_SECONDS:-3600}
+      KIONGA_PIPELINE_PIDS_LIMIT: ${KIONGA_PIPELINE_PIDS_LIMIT:-256}
     # Docker-socket access is a deliberate root-equivalent trust boundary for the
     # local/single-operator profile, not multi-tenant isolation. User job containers
     # never receive the socket, drop all capabilities, use no-new-privileges and a
@@ -480,12 +480,12 @@ services:
     volumes:
       - ${KIONGA_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     environment:
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
-      SERVE_IMAGE: mlaiops-mlflow
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
+      SERVE_IMAGE: kionga-mlflow
       SERVE_PIDS_LIMIT: ${SERVE_PIDS_LIMIT:-256}
       # Empty: negotiate with the daemon. Pin with a value such as v1.44.
       DOCKER_API_VERSION: ${DOCKER_API_VERSION:-}
-      PLATFORM_NETWORK: mlaiops_default
+      PLATFORM_NETWORK: kionga_default
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
       # Read-only on the model buckets (objectstore-init.py), never the store's
@@ -547,26 +547,26 @@ services:
     entrypoint: ["python", "-m", "realtime.service"]
     environment:
       KAFKA_REST_URL: http://kafka-rest:8082
-      MLAIOPS_URL: http://gateway:8080
-      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
-      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      KIONGA_URL: http://gateway:8080
+      KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       CALLCENTER_AGENT_ID: ${CALLCENTER_AGENT_ID:-}
       FRAUD_MODEL_ENDPOINT: ${FRAUD_MODEL_ENDPOINT:-}
     restart: unless-stopped
 
   feature-materializer:
     # The agent runtime image already contains the features package and SDK extras.
-    image: mlaiops-agent-runtime
+    image: kionga-agent-runtime
     pull_policy: never   # built locally by agent-runtime; never pulled from a registry
     depends_on:
       gateway: {condition: service_started}
       feature-gateway: {condition: service_started}
       storage-proxy: {condition: service_started}
     environment:
-      MLAIOPS_URL: http://gateway:8080
-      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
-      MLAIOPS_STORAGE_PROXY_URL: http://storage-proxy:8084
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_URL: http://gateway:8080
+      KIONGA_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      KIONGA_STORAGE_PROXY_URL: http://storage-proxy:8084
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
     entrypoint: ["python", "-m", "features.materialize"]
     restart: "no"
 
@@ -578,7 +578,7 @@ services:
       kafka-rest: {condition: service_started}
     environment:
       # All agent LLM calls egress here; requests forward to the configured
-      # provider and every call is published to mlaiops.llm.traces.
+      # provider and every call is published to kionga.llm.traces.
       LLM_UPSTREAM_URL: ${LLM_UPSTREAM_URL:-https://api.openai.com}
       # Callers authenticate with a project key; only its SHA-256 lives here.
       TRACE_PROXY_KEYS: ${TRACE_PROXY_KEYS:?TRACE_PROXY_KEYS is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
@@ -589,14 +589,14 @@ services:
       # Total time for one response, stream included. Empty uses the default, 660.
       TRACE_PROXY_WRITE_TIMEOUT_SECONDS: ${TRACE_PROXY_WRITE_TIMEOUT_SECONDS:-}
       TRACE_SINK_FORMAT: kafka-rest
-      TRACE_SINK_URL: http://kafka-rest:8082/topics/mlaiops.llm.traces
-      MLAIOPS_AGENT_NAME: shared
-      MLAIOPS_AGENT_VERSION: local
+      TRACE_SINK_URL: http://kafka-rest:8082/topics/kionga.llm.traces
+      KIONGA_AGENT_NAME: shared
+      KIONGA_AGENT_VERSION: local
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${TRACE_PROXY_PORT:-8081}:8081"]
 
   agent-runtime:
     restart: unless-stopped
-    image: mlaiops-agent-runtime
+    image: kionga-agent-runtime
     build:
       context: ${KIONGA_SRC:-..}/agent-runtime
       args:
@@ -608,24 +608,24 @@ services:
       postgres: {condition: service_healthy}
       trace-proxy: {condition: service_started}
     environment:
-      MLAIOPS_GRAPH_MODULE: ${MLAIOPS_GRAPH_MODULE:-agents.customer_support.graph:build}
-      MLAIOPS_AGENT_NAME: customer-support
+      KIONGA_GRAPH_MODULE: ${KIONGA_GRAPH_MODULE:-agents.customer_support.graph:build}
+      KIONGA_AGENT_NAME: customer-support
       AGNO_MODEL: ${AGNO_MODEL:-}
-      MLAIOPS_INTERNAL_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
-      MLAIOPS_TOKEN: ${MLAIOPS_INTERNAL_TOKEN:-kionga-local-service-token}
-      MLAIOPS_AGENT_ID: ${MLAIOPS_AGENT_ID:-}
-      MLAIOPS_URL: http://gateway:8080
-      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
+      KIONGA_INTERNAL_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
+      KIONGA_AGENT_ID: ${KIONGA_AGENT_ID:-}
+      KIONGA_URL: http://gateway:8080
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
       # mock by default: the stack works with zero API keys. Set
-      # MLAIOPS_LLM_BACKEND=openai (plus LLM_UPSTREAM_API_KEY on the proxy) or
+      # KIONGA_LLM_BACKEND=openai (plus LLM_UPSTREAM_API_KEY on the proxy) or
       # anthropic for real models; openai calls egress through the trace-proxy,
       # so the OpenAI key this service holds is its Kionga project key.
-      MLAIOPS_LLM_BACKEND: ${MLAIOPS_LLM_BACKEND:-mock}
-      MLAIOPS_LLM_MODEL: ${MLAIOPS_LLM_MODEL:-}
-      MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
+      KIONGA_LLM_BACKEND: ${KIONGA_LLM_BACKEND:-mock}
+      KIONGA_LLM_MODEL: ${KIONGA_LLM_MODEL:-}
+      KIONGA_LLM_BASE_URL: ${KIONGA_LLM_BASE_URL:-http://trace-proxy:8081/v1}
       OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?TRACE_PROXY_PROJECT_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      KIONGA_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
@@ -638,7 +638,7 @@ services:
   # reaches Kionga resources only through the gateway's internal listener.
   agent-designer-runner:
     restart: unless-stopped
-    image: mlaiops-agent-runtime
+    image: kionga-agent-runtime
     pull_policy: never   # same image as agent-runtime, built by that service
     entrypoint: ["python", "-m", "agent_runtime.designer"]
     depends_on:
@@ -647,13 +647,13 @@ services:
     environment:
       KIONGA_DESIGNER_RUNNER_TOKEN: ${KIONGA_DESIGNER_RUNNER_TOKEN:-kionga-local-designer-runner-token}
       KIONGA_DESIGNER_MAX_RUNS: ${KIONGA_DESIGNER_MAX_RUNS:-8}
-      MLAIOPS_LLM_BACKEND: ${MLAIOPS_LLM_BACKEND:-mock}
-      MLAIOPS_LLM_MODEL: ${MLAIOPS_LLM_MODEL:-}
-      MLAIOPS_LLM_BASE_URL: ${MLAIOPS_LLM_BASE_URL:-http://trace-proxy:8081/v1}
+      KIONGA_LLM_BACKEND: ${KIONGA_LLM_BACKEND:-mock}
+      KIONGA_LLM_MODEL: ${KIONGA_LLM_MODEL:-}
+      KIONGA_LLM_BASE_URL: ${KIONGA_LLM_BASE_URL:-http://trace-proxy:8081/v1}
       OPENAI_API_KEY: ${TRACE_PROXY_PROJECT_KEY:?TRACE_PROXY_PROJECT_KEY is not set; make local-up generates it, other deployments set it in .env (see .env.example)}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      MLAIOPS_COST_PER_1K_INPUT: ${MLAIOPS_COST_PER_1K_INPUT:-0}
-      MLAIOPS_COST_PER_1K_OUTPUT: ${MLAIOPS_COST_PER_1K_OUTPUT:-0}
+      KIONGA_COST_PER_1K_INPUT: ${KIONGA_COST_PER_1K_INPUT:-0}
+      KIONGA_COST_PER_1K_OUTPUT: ${KIONGA_COST_PER_1K_OUTPUT:-0}
     read_only: true
     tmpfs: ["/tmp:size=64m"]
     cap_drop: [ALL]
@@ -688,20 +688,20 @@ services:
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       KIONGA_WORKSPACE_NAME: local
       KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
-      MLAIOPS_URL: http://127.0.0.1:8890
-      MLAIOPS_FEATURE_GATEWAY_URL: http://feature-gateway:8083
+      KIONGA_URL: http://127.0.0.1:8890
+      KIONGA_FEATURE_GATEWAY_URL: http://feature-gateway:8083
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
       S3_ENDPOINT: http://objectstore:9000
       S3_MOUNT_ROOT: /workspace/object-store
       # Every bucket mounts at this prefix, never whole, as a real workspace does.
       S3_MOUNT_PREFIX: projects/local
-      S3_MOUNT_BUCKETS: mlaiops-models mlaiops-artifacts mlaiops-features mlaiops-traces mlaiops-agents mlaiops-pipeline-logs
+      S3_MOUNT_BUCKETS: kionga-models kionga-artifacts kionga-features kionga-traces kionga-agents kionga-pipeline-logs
       KAFKA_REST_URL: http://kafka-rest:8082
       PREFECT_API_URL: http://prefect-server:4200/api
-      DATABASE_URL: postgres://mlaiops:${POSTGRES_PASSWORD:-mlaiops-local}@postgres:5432/mlaiops?sslmode=disable
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
       REDIS_URL: redis://redis:6379
       LANGFUSE_HOST: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
@@ -746,11 +746,11 @@ services:
       KIONGA_WORKSPACE_API_TOKEN: ${KIONGA_WORKSPACE_API_TOKEN:-kionga-local-workspace-api-identity-change-me}
       KIONGA_WORKSPACE_NAME: local
       KIONGA_GATEWAY_INTERNAL_URL: http://gateway:8087
-      MLAIOPS_URL: http://127.0.0.1:8890
+      KIONGA_URL: http://127.0.0.1:8890
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://objectstore:9000
-      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-mlaiops}
-      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-mlaiops-local-secret}
+      AWS_ACCESS_KEY_ID: ${OBJECTSTORE_ACCESS_KEY:-kionga-local-access}
+      AWS_SECRET_ACCESS_KEY: ${OBJECTSTORE_SECRET_KEY:-kionga-local-secret}
     expose: ["8080"]
     volumes:
       - jupyter-data:/workspace

@@ -89,7 +89,7 @@ def test_dotenv_value_wins_over_stored(checkout):
 
 
 def test_weak_dotenv_value_is_ignored_with_a_warning(checkout):
-    weak = "-".join(["mlaiops", "local"])
+    weak = "-".join(["kionga", "local"])
     (checkout / ".env").write_text(f"JUPYTER_TOKEN={weak}\n")
     result = run_ensure(checkout)
     assert result.returncode == 0, result.stderr
@@ -176,7 +176,7 @@ def test_compose_has_no_weak_workspace_defaults():
         assert services[service]["environment"][variable] in ("${JUPYTER_TOKEN:-}", "${IDE_PASSWORD:-}")
     for service in ("jupyter", "gateway", "ide"):
         assert services[service]["environment"]["KIONGA_WORKSPACE_JOB_TOKEN"] == "${KIONGA_WORKSPACE_JOB_TOKEN:-}"
-    assert "'mlaiops-local'" not in str(services["jupyter"]["healthcheck"])
+    assert "'kionga-local'" not in str(services["jupyter"]["healthcheck"])
 
 
 def test_local_workbench_mounts_a_prefix_not_whole_buckets():

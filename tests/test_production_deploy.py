@@ -19,7 +19,7 @@ cloud_spec.loader.exec_module(cloud)
 
 def vm_inputs(tmp_path):
     config = tmp_path / "config.json"
-    config.write_text(json.dumps({"MLAIOPS_ALLOWED_ORIGIN": "https://app.company.test"}))
+    config.write_text(json.dumps({"KIONGA_ALLOWED_ORIGIN": "https://app.company.test"}))
     secrets = tmp_path / "secrets"
     secrets.mkdir()
     for name in vm.REQUIRED_SECRETS:

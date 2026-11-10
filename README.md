@@ -56,7 +56,7 @@ make local-start              # cached images only: no downloads or builds
   values yourself (`.env.example` has the commands).
 - **Model artifact reader:** the file also holds `SERVING_OBJECTSTORE_ACCESS_KEY` and
   `SERVING_OBJECTSTORE_SECRET_KEY`. `objectstore-init` creates that user with read-only
-  access to `mlaiops-models` and `mlaiops-artifacts`, and the serving manager downloads
+  access to `kionga-models` and `kionga-artifacts`, and the serving manager downloads
   artifacts with it instead of the store's root user.
 - **Disk:** builds count the host's free space plus space the Podman machine
   already holds but does not use. If that is short, it removes dangling
@@ -64,7 +64,7 @@ make local-start              # cached images only: no downloads or builds
   touched. Set `KIONGA_AUTO_PRUNE=0` or `KIONGA_AUTO_RECOVER_ENGINE=0` to opt out.
 
 Open the console URL printed by startup (normally [http://127.0.0.1:8080](http://127.0.0.1:8080))
-and sign in with `admin` / `mlaiops-local`. The numeric address matches the container
+and sign in with `admin` / `kionga-local`. The numeric address matches the container
 binding and readiness check. Single sign-on also requires the configured callback
 host (normally `localhost`) to reach this same gateway. Stop a standalone
 `make run` gateway on the same port before using the Compose stack. Other
@@ -195,7 +195,7 @@ runs and the commit conventions.
 ### Shared agent runtime authentication
 
 Compose gives the gateway `KIONGA_AGENT_RUNTIME_TOKEN` with the same value as
-the shared agent runtime's `MLAIOPS_INTERNAL_TOKEN`. Set `MLAIOPS_INTERNAL_TOKEN`
+the shared agent runtime's `KIONGA_INTERNAL_TOKEN`. Set `KIONGA_INTERNAL_TOKEN`
 in `.env` for both; public mode requires a non-development value. After rotating
 it, recreate both `gateway` and `agent-runtime`. This wiring requires
 kiongahq/platform#118.

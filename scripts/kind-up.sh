@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLUSTER="${KIND_CLUSTER_NAME:-mlaiops}"
+CLUSTER="${KIND_CLUSTER_NAME:-kionga}"
 CONTEXT="kind-${CLUSTER}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f}"
 
@@ -21,7 +21,7 @@ grep -Fxq "$CLUSTER" <<<"$(kind get clusters)" || kind create cluster \
 kubectl config use-context "$CONTEXT" >/dev/null
 KUBECTL=(kubectl --context "$CONTEXT")
 
-"${KUBECTL[@]}" create namespace mlaiops-system --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
+"${KUBECTL[@]}" create namespace kionga-system --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" apply -f "$ROOT/config/crd"
 "${KUBECTL[@]}" apply -f "$ROOT/config/rbac"
 
@@ -43,38 +43,38 @@ for repo in platform trace-proxy agent-runtime sdk-python; do
 done
 for service in gateway operator integration-worker feature-gateway storage-proxy metrics-collector; do
   if [[ "$service" == "gateway" ]]; then
-    docker build -f "$SRC/platform/Dockerfile.gateway" -t "mlaiops/$service:dev" "$SRC/platform"
+    docker build -f "$SRC/platform/Dockerfile.gateway" -t "kionga/$service:dev" "$SRC/platform"
   else
-    docker build --build-arg "SERVICE=$service" -t "mlaiops/$service:dev" "$SRC/platform/go"
+    docker build --build-arg "SERVICE=$service" -t "kionga/$service:dev" "$SRC/platform/go"
   fi
-  kind load docker-image --name "$CLUSTER" "mlaiops/$service:dev"
+  kind load docker-image --name "$CLUSTER" "kionga/$service:dev"
 done
-docker build -t mlaiops/trace-proxy:dev "$SRC/trace-proxy"
-kind load docker-image --name "$CLUSTER" mlaiops/trace-proxy:dev
+docker build -t kionga/trace-proxy:dev "$SRC/trace-proxy"
+kind load docker-image --name "$CLUSTER" kionga/trace-proxy:dev
 docker build --build-arg SDK_SOURCE=local --build-context "sdk=$SRC/sdk-python" \
-  -t mlaiops/agent-runtime:dev "$SRC/agent-runtime"
-kind load docker-image --name "$CLUSTER" mlaiops/agent-runtime:dev
+  -t kionga/agent-runtime:dev "$SRC/agent-runtime"
+kind load docker-image --name "$CLUSTER" kionga/agent-runtime:dev
 
 "${KUBECTL[@]}" apply -f "$ROOT/config/network"
 "${KUBECTL[@]}" apply -f "$ROOT/config/deploy"
-"${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-operator operator=mlaiops/operator:dev
-"${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-gateway gateway=mlaiops/gateway:dev
-"${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-integration-worker worker=mlaiops/integration-worker:dev
-"${KUBECTL[@]}" -n mlaiops-system set env deployment/mlaiops-operator TRACE_PROXY_IMAGE=mlaiops/trace-proxy:dev
-"${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-feature-gateway feature-gateway=mlaiops/feature-gateway:dev
-"${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-storage-proxy storage-proxy=mlaiops/storage-proxy:dev
-"${KUBECTL[@]}" -n mlaiops-system set image deployment/mlaiops-metrics-collector collector=mlaiops/metrics-collector:dev
+"${KUBECTL[@]}" -n kionga-system set image deployment/kionga-operator operator=kionga/operator:dev
+"${KUBECTL[@]}" -n kionga-system set image deployment/kionga-gateway gateway=kionga/gateway:dev
+"${KUBECTL[@]}" -n kionga-system set image deployment/kionga-integration-worker worker=kionga/integration-worker:dev
+"${KUBECTL[@]}" -n kionga-system set env deployment/kionga-operator TRACE_PROXY_IMAGE=kionga/trace-proxy:dev
+"${KUBECTL[@]}" -n kionga-system set image deployment/kionga-feature-gateway feature-gateway=kionga/feature-gateway:dev
+"${KUBECTL[@]}" -n kionga-system set image deployment/kionga-storage-proxy storage-proxy=kionga/storage-proxy:dev
+"${KUBECTL[@]}" -n kionga-system set image deployment/kionga-metrics-collector collector=kionga/metrics-collector:dev
 
 for target in \
-  mlaiops-operator:operator \
-  mlaiops-gateway:gateway \
-  mlaiops-integration-worker:worker \
-  mlaiops-feature-gateway:feature-gateway \
-  mlaiops-storage-proxy:storage-proxy \
-  mlaiops-metrics-collector:collector; do
+  kionga-operator:operator \
+  kionga-gateway:gateway \
+  kionga-integration-worker:worker \
+  kionga-feature-gateway:feature-gateway \
+  kionga-storage-proxy:storage-proxy \
+  kionga-metrics-collector:collector; do
   deployment="${target%%:*}"
   container="${target##*:}"
-  "${KUBECTL[@]}" -n mlaiops-system patch deployment "$deployment" --type=strategic \
+  "${KUBECTL[@]}" -n kionga-system patch deployment "$deployment" --type=strategic \
     -p '{"spec":{"template":{"spec":{"containers":[{"name":"'"$container"'","imagePullPolicy":"IfNotPresent"}]}}}}'
 done
 echo "Core platform applied. Install KFP, KServe, MLflow and Langfuse using your pinned environment values."

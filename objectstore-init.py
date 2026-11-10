@@ -17,17 +17,17 @@ from botocore.exceptions import ClientError, EndpointConnectionError
 
 
 BUCKETS = (
-    "mlaiops-models",
-    "mlaiops-artifacts",
-    "mlaiops-features",
-    "mlaiops-traces",
-    "mlaiops-agents",
-    "mlaiops-pipeline-logs",
+    "kionga-models",
+    "kionga-artifacts",
+    "kionga-features",
+    "kionga-traces",
+    "kionga-agents",
+    "kionga-pipeline-logs",
     "kionga-blog-media",
 )
 EXISTS_CODES = {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}
 # Where MLflow stores model artifacts; nothing else is readable by the reader.
-READER_BUCKETS = ("mlaiops-models", "mlaiops-artifacts")
+READER_BUCKETS = ("kionga-models", "kionga-artifacts")
 READER_POLICY_NAME = "kionga-model-reader"
 READER_POLICY = {
     "Version": "2012-10-17",

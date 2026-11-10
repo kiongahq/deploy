@@ -2,10 +2,10 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-gateway-required-egress
-  namespace: mlaiops-system
+  namespace: kionga-system
 spec:
   podSelector:
-    matchLabels: {app: mlaiops-gateway}
+    matchLabels: {app: kionga-gateway}
   policyTypes: [Egress]
   egress:
     - to:
@@ -31,10 +31,10 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-ingress-to-gateway
-  namespace: mlaiops-system
+  namespace: kionga-system
 spec:
   podSelector:
-    matchLabels: {app: mlaiops-gateway}
+    matchLabels: {app: kionga-gateway}
   policyTypes: [Ingress]
   ingress:
     - from:

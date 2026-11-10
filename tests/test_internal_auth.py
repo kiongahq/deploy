@@ -1,5 +1,5 @@
 """Internal services that hold credentials or the Docker socket fail closed
-without MLAIOPS_INTERNAL_TOKEN, so every one of them, and every caller, must
+without KIONGA_INTERNAL_TOKEN, so every one of them, and every caller, must
 get the same token as the gateway."""
 
 import pytest
@@ -24,19 +24,19 @@ def services():
 
 def test_protected_services_get_the_gateway_token():
     all_services = services()
-    token = all_services["gateway"]["environment"]["MLAIOPS_INTERNAL_TOKEN"]
+    token = all_services["gateway"]["environment"]["KIONGA_INTERNAL_TOKEN"]
     for name in PROTECTED:
-        assert all_services[name]["environment"].get("MLAIOPS_INTERNAL_TOKEN") == token, name
+        assert all_services[name]["environment"].get("KIONGA_INTERNAL_TOKEN") == token, name
 
 
 def test_public_overlay_overrides_every_protected_token():
     public = yaml.load((ROOT / "compose.public.yaml").read_text(), Loader=Loader)["services"]
     for name in PROTECTED:
-        assert "MLAIOPS_INTERNAL_TOKEN" in public[name].get("environment", {}), name
+        assert "KIONGA_INTERNAL_TOKEN" in public[name].get("environment", {}), name
 
 
 @pytest.mark.parametrize("files,env", [
-    (("compose.yaml",), {"MLAIOPS_INTERNAL_TOKEN": "rendered-shared-runtime-token"}),
+    (("compose.yaml",), {"KIONGA_INTERNAL_TOKEN": "rendered-shared-runtime-token"}),
     (("compose.yaml", "compose.public.yaml"), PUBLIC_ENV),
 ])
 def test_rendered_shared_agent_runtime_has_matching_invocation_credentials(files, env):
@@ -44,13 +44,13 @@ def test_rendered_shared_agent_runtime_has_matching_invocation_credentials(files
     gateway = rendered["gateway"]["environment"]
     runtime = rendered["agent-runtime"]["environment"]
     assert gateway["AGENT_RUNTIME_URL"] == "http://agent-runtime:9000"
-    assert gateway["KIONGA_AGENT_RUNTIME_TOKEN"] == runtime["MLAIOPS_INTERNAL_TOKEN"]
+    assert gateway["KIONGA_AGENT_RUNTIME_TOKEN"] == runtime["KIONGA_INTERNAL_TOKEN"]
 
 
 def test_public_preflight_requires_the_shared_runtime_token():
     public = yaml.load((ROOT / "compose.public.yaml").read_text(), Loader=Loader)["services"]
     # Public preflight rejects an unset token before either side can use a local default.
-    assert "MLAIOPS_INTERNAL_TOKEN:?" in public["public-preflight"]["environment"]["MLAIOPS_INTERNAL_TOKEN"]
+    assert "KIONGA_INTERNAL_TOKEN:?" in public["public-preflight"]["environment"]["KIONGA_INTERNAL_TOKEN"]
 
 
 def test_mlflow_names_the_postgres_driver_its_image_installs():

@@ -45,8 +45,8 @@ def test_native_build_preserves_named_contexts_and_build_arguments():
             'args': {'PLATFORM_SOURCE': 'local'},
             'additional_contexts': {'sdk': '/src/sdk-python'},
         },
-    }, 'mlaiops')
-    assert command[command.index('--tag') + 1] == 'mlaiops-jupyter'
+    }, 'kionga')
+    assert command[command.index('--tag') + 1] == 'kionga-jupyter'
     assert command[command.index('--file') + 1] == '/src/workspace/jupyter/Dockerfile'
     assert command[command.index('--build-context') + 1] == 'sdk=/src/sdk-python'
     assert command[command.index('--build-arg') + 1] == 'PLATFORM_SOURCE=local'

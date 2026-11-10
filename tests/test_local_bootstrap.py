@@ -253,12 +253,12 @@ def test_build_inputs_cover_every_compose_build():
 
 
 def test_registry_images_exclude_images_another_service_builds():
-    """Regression: a cold start pulled `mlaiops-agent-runtime` (named by the
+    """Regression: a cold start pulled `kionga-agent-runtime` (named by the
     feature materializer, built by agent-runtime) from Docker Hub and failed."""
     module = _load_build_inputs()
     config = {"services": {
-        "agent-runtime": {"image": "mlaiops-agent-runtime", "build": {"context": "."}},
-        "feature-materializer": {"image": "mlaiops-agent-runtime"},
+        "agent-runtime": {"image": "kionga-agent-runtime", "build": {"context": "."}},
+        "feature-materializer": {"image": "kionga-agent-runtime"},
         "gateway": {"build": {"context": "."}},
         "redis": {"image": "redis:7"},
     }}
@@ -280,6 +280,6 @@ def test_registry_images_of_the_real_stack_are_all_pullable_names():
     config = compose_config("ide")
     images = module.registry_images(config)
     built = {s["image"] for s in config["services"].values() if s.get("build") and s.get("image")}
-    assert "mlaiops-agent-runtime" in built and not set(images) & built
+    assert "kionga-agent-runtime" in built and not set(images) & built
     assert any(i.startswith("rustfs/rustfs:") for i in images)
     assert all("/" in i or ":" in i for i in images), images

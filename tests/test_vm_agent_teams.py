@@ -107,7 +107,7 @@ def test_the_runner_reaches_the_gateway_and_models_only_through_the_proxy(tmp_pa
     assert gateway["KIONGA_AGENT_DESIGNER_CALLBACK_URL"] == "http://gateway:8087/api/v1"
     assert gateway["KIONGA_AGENT_DESIGNER_RUNNER_TOKEN_FILE"] == "/run/secrets/KIONGA_DESIGNER_RUNNER_TOKEN"
     runner = services["agent-designer-runner"]
-    assert runner["environment"]["MLAIOPS_LLM_BASE_URL"] == "http://trace-proxy:8081/v1"
+    assert runner["environment"]["KIONGA_LLM_BASE_URL"] == "http://trace-proxy:8081/v1"
     assert set(runner["networks"]) == {"agents"}
     assert set(services["trace-proxy"]["networks"]) == {"agents", "llm-egress"}
     assert services["trace-proxy"]["environment"]["LLM_UPSTREAM_URL"] == "https://api.openai.com"
@@ -292,7 +292,7 @@ def test_files_have_no_defaulted_credentials():
 
 def test_config_example_carries_no_secret():
     values = json.loads((ROOT / "vm/config.example.json").read_text())
-    assert not [key for key in values if re.search("PASSWORD|SECRET|API_KEY", key) or key in ("MLAIOPS_INTERNAL_TOKEN",)]
+    assert not [key for key in values if re.search("PASSWORD|SECRET|API_KEY", key) or key in ("KIONGA_INTERNAL_TOKEN",)]
     assert values["KIONGA_ENVIRONMENT"] == "production"
     assert "KIONGA_LOCAL_LOGIN" not in values
 
@@ -428,7 +428,7 @@ def test_every_allowlist_becomes_its_gateway_setting(tmp_path):
     ({"feature_allowlist": ["KIONGA_STORAGE_SECRET_REFS"]}, "cannot name KIONGA_STORAGE_SECRET_REFS"),
     ({"files": ["KIONGA_KB_SECRET_X_FILE"]}, "cannot name KIONGA_KB_SECRET_X_FILE"),
     ({"files": ["DATABASE_URL"], "knowledge_allowlist": ["DATABASE_URL"]}, "cannot name DATABASE_URL"),
-    ({"connection_allowlist": ["MLAIOPS_INTERNAL_TOKEN"]}, "cannot name MLAIOPS_INTERNAL_TOKEN"),
+    ({"connection_allowlist": ["KIONGA_INTERNAL_TOKEN"]}, "cannot name KIONGA_INTERNAL_TOKEN"),
     ({"connection_allowlist": ["KIONGA_SANDBOX_TOKEN"]}, "cannot name KIONGA_SANDBOX_TOKEN"),
     ({"knowledge_allowlist": ["KIONGA_KB_SECRET_REFS"]}, "cannot name KIONGA_KB_SECRET_REFS"),
     ({"files": ["KIONGA_CONNECTION_SECRET_REFS"]}, "cannot name KIONGA_CONNECTION_SECRET_REFS"),

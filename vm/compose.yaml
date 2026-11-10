@@ -18,7 +18,7 @@ services:
       KIONGA_ENVIRONMENT: production
       DATABASE_URL_FILE: /run/secrets/DATABASE_URL
       OIDC_CLIENT_SECRET_FILE: /run/secrets/OIDC_CLIENT_SECRET
-      MLAIOPS_INTERNAL_TOKEN_FILE: /run/secrets/MLAIOPS_INTERNAL_TOKEN
+      KIONGA_INTERNAL_TOKEN_FILE: /run/secrets/KIONGA_INTERNAL_TOKEN
       KIONGA_CREDENTIAL_KEY_FILE: /run/secrets/KIONGA_CREDENTIAL_KEY
     volumes:
       - type: bind
@@ -26,7 +26,7 @@ services:
         target: /etc/kionga/config.json
         read_only: true
         bind: {create_host_path: false}
-    secrets: [DATABASE_URL, OIDC_CLIENT_SECRET, MLAIOPS_INTERNAL_TOKEN, KIONGA_CREDENTIAL_KEY]
+    secrets: [DATABASE_URL, OIDC_CLIENT_SECRET, KIONGA_INTERNAL_TOKEN, KIONGA_CREDENTIAL_KEY]
     networks: [backend]
     # No host port. Caddy is the only public listener.
   caddy:
@@ -55,5 +55,5 @@ volumes:
 secrets:
   DATABASE_URL: {file: '${KIONGA_SECRETS_DIR}/DATABASE_URL'}
   OIDC_CLIENT_SECRET: {file: '${KIONGA_SECRETS_DIR}/OIDC_CLIENT_SECRET'}
-  MLAIOPS_INTERNAL_TOKEN: {file: '${KIONGA_SECRETS_DIR}/MLAIOPS_INTERNAL_TOKEN'}
+  KIONGA_INTERNAL_TOKEN: {file: '${KIONGA_SECRETS_DIR}/KIONGA_INTERNAL_TOKEN'}
   KIONGA_CREDENTIAL_KEY: {file: '${KIONGA_SECRETS_DIR}/KIONGA_CREDENTIAL_KEY'}

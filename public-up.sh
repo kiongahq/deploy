@@ -42,7 +42,7 @@ KAFKA_BROKER=localhost:9092 ./scripts/local-topics.sh || true
 echo "==> waiting for the gateway"
 for _ in $(seq 1 60); do
   if "${compose[@]}" exec -T caddy wget -q -O /dev/null "http://gateway:8080/api/v1/health"; then
-    echo "==> platform is up: https://${MLAIOPS_DOMAIN}"
+    echo "==> platform is up: https://${KIONGA_DOMAIN}"
     exit 0
   fi
   sleep 2

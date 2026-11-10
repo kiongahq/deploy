@@ -1,9 +1,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: kiongapipelineruns.mlaiops.io
+  name: kiongapipelineruns.kionga.dev
 spec:
-  group: mlaiops.io
+  group: kionga.dev
   scope: Namespaced
   names: {plural: kiongapipelineruns, singular: kiongapipelinerun, kind: KiongaPipelineRun, shortNames: [kpr]}
   versions:
@@ -35,9 +35,9 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: kiongatools.mlaiops.io
+  name: kiongatools.kionga.dev
 spec:
-  group: mlaiops.io
+  group: kionga.dev
   scope: Namespaced
   names: {plural: kiongatools, singular: kiongatool, kind: KiongaTool, shortNames: [ktool]}
   versions:
@@ -68,9 +68,9 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: kiongaconnections.mlaiops.io
+  name: kiongaconnections.kionga.dev
 spec:
-  group: mlaiops.io
+  group: kionga.dev
   scope: Namespaced
   names: {plural: kiongaconnections, singular: kiongaconnection, kind: KiongaConnection, shortNames: [kconn]}
   versions:
@@ -105,9 +105,9 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: kiongamodelpromotions.mlaiops.io
+  name: kiongamodelpromotions.kionga.dev
 spec:
-  group: mlaiops.io
+  group: kionga.dev
   scope: Namespaced
   names: {plural: kiongamodelpromotions, singular: kiongamodelpromotion, kind: KiongaModelPromotion, shortNames: [kmp]}
   versions:

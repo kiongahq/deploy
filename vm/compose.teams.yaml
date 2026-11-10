@@ -35,8 +35,8 @@ services:
       TRACE_PROXY_WRITE_TIMEOUT_SECONDS: ${TRACE_PROXY_WRITE_TIMEOUT_SECONDS:-}
       LLM_UPSTREAM_API_KEY_FILE: /run/secrets/LLM_UPSTREAM_API_KEY
       TRACE_PROXY_KEYS_FILE: /run/secrets/TRACE_PROXY_KEYS
-      MLAIOPS_AGENT_NAME: shared
-      MLAIOPS_AGENT_VERSION: vm
+      KIONGA_AGENT_NAME: shared
+      KIONGA_AGENT_VERSION: vm
     secrets: [LLM_UPSTREAM_API_KEY, TRACE_PROXY_KEYS]
     networks: [agents, llm-egress]
   agent-designer-runner:
@@ -60,9 +60,9 @@ services:
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       KIONGA_DESIGNER_RUNNER_TOKEN_FILE: /run/secrets/KIONGA_DESIGNER_RUNNER_TOKEN
-      MLAIOPS_LLM_BACKEND: openai-compatible
-      MLAIOPS_LLM_MODEL: ${KIONGA_LLM_MODEL:?supply through vm/up.py}
-      MLAIOPS_LLM_BASE_URL: http://trace-proxy:8081/v1
+      KIONGA_LLM_BACKEND: openai-compatible
+      KIONGA_LLM_MODEL: ${KIONGA_LLM_MODEL:?supply through vm/up.py}
+      KIONGA_LLM_BASE_URL: http://trace-proxy:8081/v1
     secrets: [KIONGA_DESIGNER_RUNNER_TOKEN, TRACE_PROXY_PROJECT_KEY]
     networks: [agents]
     depends_on: [trace-proxy]

@@ -103,7 +103,7 @@ jobs:
         run: REQUESTS=300 CONCURRENCY=48 ./scripts/stress-test.sh
       - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1
       - name: Load test with SLO thresholds
-        run: k6 run -e PROFILE=smoke -e MLAIOPS_URL=http://localhost:8080 tests/load/gateway.js
+        run: k6 run -e PROFILE=smoke -e KIONGA_URL=http://localhost:8080 tests/load/gateway.js
       - name: Service logs on failure
         if: failure()
         run: docker compose -f compose.yaml logs --tail 200

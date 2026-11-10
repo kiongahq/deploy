@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLUSTER="${KIND_CLUSTER_NAME:-mlaiops}"
+CLUSTER="${KIND_CLUSTER_NAME:-kionga}"
 CONTEXT="kind-${CLUSTER}"
 export PATH="${MLOPS_TOOLS_BIN:-$ROOT/.tools.nosync/bin}:$PATH"
 
@@ -21,9 +21,9 @@ kubectl config get-contexts "$CONTEXT" >/dev/null 2>&1 || {
 KUBECTL=(kubectl --context "$CONTEXT")
 "${KUBECTL[@]}" cluster-info >/dev/null
 
-"${KUBECTL[@]}" wait --for=condition=Established crd/kiongaagents.mlaiops.io --timeout=90s
-"${KUBECTL[@]}" wait --for=condition=Established crd/kiongaworkspaces.mlaiops.io --timeout=90s
-"${KUBECTL[@]}" wait --for=condition=Available deployment/mlaiops-operator -n mlaiops-system --timeout=180s
+"${KUBECTL[@]}" wait --for=condition=Established crd/kiongaagents.kionga.dev --timeout=90s
+"${KUBECTL[@]}" wait --for=condition=Established crd/kiongaworkspaces.kionga.dev --timeout=90s
+"${KUBECTL[@]}" wait --for=condition=Available deployment/kionga-operator -n kionga-system --timeout=180s
 
 namespace="e2e-$RANDOM"
 "${KUBECTL[@]}" create namespace "$namespace"
@@ -31,14 +31,14 @@ cleanup() { "${KUBECTL[@]}" delete namespace "$namespace" --wait=false >/dev/nul
 trap cleanup EXIT
 
 cat <<YAML | "${KUBECTL[@]}" apply -f -
-apiVersion: mlaiops.io/v1alpha1
+apiVersion: kionga.dev/v1alpha1
 kind: KiongaAgent
 metadata:
   name: e2e-agent
   namespace: ${namespace}
 spec:
   version: "1"
-  image: mlaiops/agent-runtime:dev
+  image: kionga/agent-runtime:dev
   graphModule: agents.customer_support.graph:build
   replicas: {min: 1, max: 2}
   llm: {backend: mock}
@@ -52,7 +52,7 @@ test -n "$agent_workload"
 "${KUBECTL[@]}" get horizontalpodautoscaler "$agent_workload" -n "$namespace"
 
 cat <<YAML | "${KUBECTL[@]}" apply -f -
-apiVersion: mlaiops.io/v1alpha1
+apiVersion: kionga.dev/v1alpha1
 kind: KiongaWorkspace
 metadata:
   name: e2e-workspace
