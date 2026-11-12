@@ -14,7 +14,7 @@ def test_podman_socket_access_does_not_disable_confinement_for_other_services():
     if not shutil.which('docker'):
         pytest.skip('Compose CLI is required for configuration validation')
     result = subprocess.run(
-        ['docker', 'compose', '-f', str(ROOT / 'compose.yaml'),
+        ['docker', 'compose', '--env-file', os.devnull, '-f', str(ROOT / 'compose.yaml'),
          '-f', str(ROOT / 'compose.podman.yaml'), 'config', '--format', 'json'],
         env={**os.environ, 'KIONGA_ENGINE_SOCKET': '/run/podman/podman.sock'},
         check=True, capture_output=True, text=True,

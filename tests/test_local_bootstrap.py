@@ -28,7 +28,7 @@ def component(name: str) -> Path:
 def compose_config(*profiles: str) -> dict:
     if not shutil.which("docker"):
         pytest.skip("Docker Compose is required for config validation")
-    args = ["docker", "compose", "-f", str(ROOT / "compose.yaml")]
+    args = ["docker", "compose", "--env-file", os.devnull, "-f", str(ROOT / "compose.yaml")]
     for profile in profiles:
         args += ["--profile", profile]
     result = subprocess.run([*args, "config", "--format", "json"], cwd=ROOT,
