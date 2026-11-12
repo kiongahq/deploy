@@ -56,7 +56,7 @@ def test_local_defaults_are_found():
     # Guards the parser: these are the defaults the issue was filed about.
     assert LOCAL_DEFAULTS["LANGFUSE_INIT_USER_PASSWORD"] == "kionga-local-admin"
     assert LOCAL_DEFAULTS["LANGFUSE_NEXTAUTH_SECRET"] == "kionga-local-nextauth"
-    assert LOCAL_DEFAULTS["POSTGRES_PASSWORD"] == "kionga-local"
+    assert "POSTGRES_PASSWORD" not in LOCAL_DEFAULTS
     assert LOCAL_DEFAULTS["OBJECTSTORE_SECRET_KEY"] == "kionga-local-secret"
 
 
@@ -194,9 +194,9 @@ def test_env_example_lists_every_public_credential():
         assert re.search(rf"^#?{var}=", example, re.M), f"{var} is required in public mode but missing from .env.example"
 
 
-def test_local_stack_keeps_its_defaults():
-    # Local mode still boots with no .env: the preflight is public-only.
+def test_local_stack_accepts_generated_database_credentials():
+    # The preflight is public-only; local mode injects generated credentials.
     local = compose_config("compose.yaml")
     assert "public-preflight" not in local
-    assert local["postgres"]["environment"]["POSTGRES_PASSWORD"] == "kionga-local"
+    assert local["postgres"]["environment"]["POSTGRES_PASSWORD"].startswith("test-")
     assert local["mlflow"]["environment"]["AWS_SECRET_ACCESS_KEY"] == local["objectstore"]["environment"]["RUSTFS_SECRET_KEY"]
