@@ -17,7 +17,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: kionga
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kionga-local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}
       POSTGRES_DB: kionga
     ports: ["${KIONGA_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"]
     volumes:
@@ -149,7 +149,7 @@ services:
         exec mlflow server --host=0.0.0.0 --port=5000
         --backend-store-uri="$$BACKEND_STORE_URI" --default-artifact-root=s3://kionga-models
     environment:
-      BACKEND_STORE_URI: postgresql+psycopg2://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga
+      BACKEND_STORE_URI: postgresql+psycopg2://kionga:${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}@postgres:5432/kionga
       # MLflow rejects unknown Host headers (DNS-rebinding protection). Allow
       # the in-network name and the published localhost port only.
       MLFLOW_SERVER_ALLOWED_HOSTS: mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
@@ -238,7 +238,7 @@ services:
       objectstore-init: {condition: service_completed_successfully}
       dex: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}@postgres:5432/kionga?sslmode=disable
       KAFKA_REST_URL: http://kafka-rest:8082
       KIONGA_LOG_EXPORTER_URL: ${KIONGA_LOG_EXPORTER_URL:-http://log-exporter:8086}
       KIONGA_TENANT: local
@@ -360,7 +360,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}@postgres:5432/kionga?sslmode=disable
       KIONGA_TENANT: ${KIONGA_TENANT:-default}
       KIONGA_LOG_EXPORT_TARGET: ${KIONGA_LOG_EXPORT_TARGET:-}
       KIONGA_LOG_EXPORT_URL: ${KIONGA_LOG_EXPORT_URL:-}
@@ -409,7 +409,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     environment:
-      DATABASE_URL: postgresql://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/langfuse
+      DATABASE_URL: postgresql://kionga:${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}@postgres:5432/langfuse
       NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT:-3000}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-kionga-local-nextauth}
       SALT: ${LANGFUSE_SALT:-kionga-local-salt}
@@ -615,7 +615,7 @@ services:
       KIONGA_TOKEN: ${KIONGA_INTERNAL_TOKEN:-kionga-local-service-token}
       KIONGA_AGENT_ID: ${KIONGA_AGENT_ID:-}
       KIONGA_URL: http://gateway:8080
-      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}@postgres:5432/kionga?sslmode=disable
       # mock by default: the stack works with zero API keys. Set
       # KIONGA_LLM_BACKEND=openai (plus LLM_UPSTREAM_API_KEY on the proxy) or
       # anthropic for real models; openai calls egress through the trace-proxy,
@@ -701,7 +701,7 @@ services:
       S3_MOUNT_BUCKETS: kionga-models kionga-artifacts kionga-features kionga-traces kionga-agents kionga-pipeline-logs
       KAFKA_REST_URL: http://kafka-rest:8082
       PREFECT_API_URL: http://prefect-server:4200/api
-      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:-kionga-local}@postgres:5432/kionga?sslmode=disable
+      DATABASE_URL: postgres://kionga:${POSTGRES_PASSWORD:?run make local-up or set POSTGRES_PASSWORD}@postgres:5432/kionga?sslmode=disable
       REDIS_URL: redis://redis:6379
       LANGFUSE_HOST: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}

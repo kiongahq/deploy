@@ -99,7 +99,7 @@ def test_env_example_recipe_produces_keys_the_shell_and_compose_both_read(tmp_pa
 
     env = {k: v for k, v in os.environ.items() if k not in KEY_VARS}
     result = subprocess.run(["docker", "compose", "--env-file", str(env_file), "-f", str(ROOT / "compose.yaml"), "config", "--format", "json"],
-                            cwd=ROOT, capture_output=True, text=True, env={**env, "KIONGA_SRC": str(ROOT.parent)})
+                            cwd=ROOT, capture_output=True, text=True, env={**env, "KIONGA_SRC": str(ROOT.parent), "POSTGRES_PASSWORD": STRONG})
     assert result.returncode == 0, result.stderr
     services = json.loads(result.stdout)["services"]
     assert json.loads(services["trace-proxy"]["environment"]["TRACE_PROXY_KEYS"]) == [entry]

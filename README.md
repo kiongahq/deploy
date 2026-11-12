@@ -96,6 +96,28 @@ it with `make langflow-down`, using the same Docker or Podman engine as the
 rest of Kionga. Open **Agents → Langflow** in the console. The `langflow-data`
 volume keeps local flows across restarts.
 
+### PostgreSQL credentials
+
+Local startup generates a random PostgreSQL password and stores it in the ignored
+`.local-state/secrets.env` file with owner-only permissions. Compose requires this
+credential; it has no built-in PostgreSQL password fallback.
+
+For an existing local database that used the former default, keep its volume and
+start the existing PostgreSQL container, then run:
+
+```bash
+python3 scripts/rotate-local-postgres.py
+```
+
+The command rotates the database role, updates the private local configuration,
+and recreates currently running database consumers. It briefly interrupts those
+services but retains the database volume. Use `--container NAME` for a differently
+named local PostgreSQL container. Do not delete the data volume to change a password.
+
+Public deployments must use their own credentials. If a public database used the
+former default, rotate that role and update all of its clients through the deployment's
+secret-management process. Removing a default from Git does not revoke a password.
+
 ### Sandboxes
 
 Agent team sandboxes run under gVisor (`runsc`) through `sandbox-manager`, which

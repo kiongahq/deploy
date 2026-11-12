@@ -8,6 +8,7 @@ image's own gomplate and the environment Compose would give the container."""
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -46,12 +47,18 @@ def compose_config(*files, env=None):
     if not shutil.which("docker"):
         pytest.skip("Docker Compose is required for config validation")
     clean = {k: v for k, v in os.environ.items() if not k.startswith(("KIONGA_", "DEX_", "KIONGA_", "OIDC_"))}
-    args = ["docker", "compose"]
+    # Never read developer credentials into test fixtures or assertion output.
+    clean = {key: value for key, value in clean.items() if key not in PUBLIC_ENV}
+    required = re.findall(r"\$\{([A-Z_]+):\?", (ROOT / "compose.yaml").read_text())
+    fixture_secrets = {name: "test-" + name.lower().replace("_", "-") * 3 for name in required} if "compose.public.yaml" not in files else {}
+    if "TRACE_PROXY_KEYS" in fixture_secrets:
+        fixture_secrets["TRACE_PROXY_KEYS"] = json.dumps([{"key_sha256": "0" * 64, "key_id": "test", "project": "test"}])
+    args = ["docker", "compose", "--env-file", os.devnull]
     for name in files:
         args += ["-f", str(ROOT / name)]
     result = subprocess.run(
         [*args, "config", "--format", "json"], cwd=ROOT, capture_output=True, text=True,
-        env={**clean, "KIONGA_SRC": str(ROOT.parent), **(env or {})})
+        env={**clean, "KIONGA_SRC": str(ROOT.parent), **fixture_secrets, **(env or {})})
     if result.returncode != 0:
         raise AssertionError(result.stderr)
     return json.loads(result.stdout)["services"]

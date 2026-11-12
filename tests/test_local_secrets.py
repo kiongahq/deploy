@@ -17,7 +17,7 @@ import pytest
 import yaml
 from test_sso import ROOT
 
-NAMES = ("JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN", "KIONGA_SANDBOX_TOKEN", "TRACE_PROXY_PROJECT_KEY",
+NAMES = ("POSTGRES_PASSWORD", "JUPYTER_TOKEN", "IDE_PASSWORD", "KIONGA_WORKSPACE_JOB_TOKEN", "KIONGA_SANDBOX_TOKEN", "TRACE_PROXY_PROJECT_KEY",
          "SERVING_OBJECTSTORE_ACCESS_KEY", "SERVING_OBJECTSTORE_SECRET_KEY")
 STRONG = "".join(["abcdef0123456789"] * 3)
 
@@ -86,6 +86,27 @@ def test_dotenv_value_wins_over_stored(checkout):
     (checkout / ".env").write_text(f'JUPYTER_TOKEN="{STRONG}"\n')
     assert run_ensure(checkout).returncode == 0
     assert stored(checkout)["JUPYTER_TOKEN"] == STRONG
+
+
+def test_existing_database_requires_migration_before_generating_password(checkout):
+    (checkout / "compose.yaml").write_text("name: kionga\n")
+    stubs = checkout / "stubs"
+    stubs.mkdir()
+    engine = stubs / "docker"
+    engine.write_text('#!/bin/sh\nexit 0\n')
+    engine.chmod(0o755)
+    result = run_ensure(checkout, PATH=f"{stubs}:{os.environ['PATH']}", KIONGA_ENGINE="docker")
+    assert result.returncode != 0
+    assert "credential migration" in result.stderr
+    assert not (checkout / ".local-state/secrets.env").exists()
+
+
+def test_database_consumers_have_no_password_fallback():
+    text = (ROOT / "compose.yaml").read_text()
+    assert "${POSTGRES_PASSWORD:-" not in text
+    services = yaml.safe_load(text)["services"]
+    for name in ["postgres", "gateway", "mlflow", "langfuse", "agent-runtime", "jupyter", "log-exporter"]:
+        assert "${POSTGRES_PASSWORD:?" in str(services[name]["environment"])
 
 
 def test_weak_dotenv_value_is_ignored_with_a_warning(checkout):
