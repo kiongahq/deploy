@@ -100,6 +100,10 @@ rules:
   - apiGroups: [kionga.dev]
     resources: [kiongaapplications, kiongafunctions, kiongamodeldeployments]
     verbs: [get, list, watch, create, update, patch, delete]
+  # Workload readiness for the applications API.
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get]
   # Logs and events for the applications API.
   - apiGroups: [""]
     resources: [pods/log]

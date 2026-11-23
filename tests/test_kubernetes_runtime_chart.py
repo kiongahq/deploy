@@ -259,6 +259,9 @@ def test_gateway_manages_the_new_resources_and_reads_logs_and_events(tmp_path):
         for verb in ("create", "get", "list", "watch", "update", "delete"):
             assert ("kionga.dev", resource, verb) in gateway
     assert ("", "pods/log", "get") in gateway and ("", "events", "watch") in gateway
+    assert ("apps", "deployments", "get") in gateway and ("", "secrets", "get") in gateway
+    assert ("kionga.dev", "kiongaagents", "get") in gateway and ("kionga.dev", "kiongaagents", "list") in gateway
+    assert not any(resource == "deployments" and verb != "get" for _, resource, verb in gateway)
     assert not any(resource == "pods/exec" for _, resource, _ in gateway)
 
 
@@ -483,3 +486,12 @@ def test_crd_examples_cover_every_new_kind_and_use_declared_fields():
     for path in invalid:
         doc = yaml.safe_load(path.read_text())
         assert doc["kind"] in crds and path.read_text().startswith("#"), path.name
+
+
+def test_static_operator_rbac_matches_the_chart(tmp_path):
+    """scripts/kind-up.sh applies config/rbac/operator.yaml instead of the chart;
+    it must grant everything the chart's operator Role does."""
+    static = next(d for d in yaml.safe_load_all((ROOT / "config/rbac/operator.yaml").read_text()) if d and d["kind"] == "ClusterRole")
+    chart = find(render_chart(tmp_path, **ON), "Role", "kionga-operator", "kionga-workloads")
+    missing = grants(chart) - grants(static)
+    assert not missing, sorted(missing)
