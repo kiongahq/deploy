@@ -295,7 +295,7 @@ class Settings:
 def application_manifest(s: Settings) -> dict:
     return {"apiVersion": "kionga.dev/v1alpha1", "kind": "KiongaApplication", "metadata": {"name": s.app, "namespace": s.namespace},
             "spec": {"image": WEB_IMAGE, "port": 8080,
-                     "replicas": {"min": 1, "max": 4}, "scaling": {"metric": "requests", "target": 5}, "healthPath": "/",
+                     "replicas": {"min": 1, "max": 4}, "scaling": {"metric": "requests", "target": 1}, "healthPath": "/",
                      "visibility": "public", "resources": {"requests": {"cpu": "20m", "memory": "16Mi"}, "limits": {"cpu": "200m", "memory": "64Mi"}}}}
 
 
@@ -355,7 +355,9 @@ class Runner:
             return str(self.http.request("GET", url, timeout=30)[0])
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            load = pool.submit(drive_load, request, 40, 150)
+            # nginx answers in microseconds, so in-flight requests at the
+            # interceptor stay low; target 1 per replica makes 60 clients enough.
+            load = pool.submit(drive_load, request, 60, 150)
 
             def scaled() -> bool:
                 peak["replicas"] = max(peak["replicas"], replicas(self.app_deployment())[0])
