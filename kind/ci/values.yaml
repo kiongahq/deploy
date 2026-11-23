@@ -1,0 +1,72 @@
+# Chart values for the kind e2e lane. The workflow adds image digests from the
+# local registry. Hosts use sslip.io, which resolves any name containing
+# 127.0.0.1 to 127.0.0.1, where kind publishes Traefik.
+storageClass: standard
+ingress:
+  enabled: true
+  className: traefik
+  host: kionga.127.0.0.1.sslip.io
+  tlsSecretName: kionga-tls
+  controllerNamespace: ingress-system
+workspaceIngress:
+  enabled: false
+components:
+  gateway:
+    replicas: 2
+    port: 8080
+    health: /api/v1/health
+    ready: /api/v1/ready
+    secrets: [DATABASE_URL, OIDC_CLIENT_SECRET, KIONGA_INTERNAL_TOKEN, KIONGA_CREDENTIAL_KEY, KIONGA_LOCAL_PASSWORD]
+gatewayAutoscaling:
+  enabled: false
+trustedCA:
+  configMapName: kionga-e2e-ca
+  key: ca.crt
+config:
+  KIONGA_ENVIRONMENT: production
+  KIONGA_ALLOWED_ORIGIN: https://kionga.127.0.0.1.sslip.io
+  # The lane signs in with the break-glass local account. These single sign-on
+  # endpoints satisfy production validation and are never contacted.
+  KIONGA_LOCAL_LOGIN: "true"
+  OIDC_ISSUER: https://idp.e2e.invalid
+  OIDC_JWKS_URL: https://idp.e2e.invalid/keys
+  OIDC_AUTH_URL: https://idp.e2e.invalid/auth
+  OIDC_TOKEN_URL: https://idp.e2e.invalid/token
+  OIDC_REDIRECT_URL: https://kionga.127.0.0.1.sslip.io/auth/callback
+  MLFLOW_URL: http://mlflow.kionga-data.svc:5000
+  WORKSPACE_MLFLOW_URL: http://mlflow.kionga-data.svc:5000
+  S3_ENDPOINT: http://objectstore.kionga-data.svc:9000
+pipelineExecutor:
+  kubernetes: true
+  namespace: kionga-pipelines
+applications:
+  enabled: true
+  baseDomain: apps.127.0.0.1.sslip.io
+  tls:
+    clusterIssuer: kionga-e2e-ca
+    secretName: kionga-applications-tls
+  fallbackIngress:
+    enabled: true
+    annotations: {traefik.ingress.kubernetes.io/router.priority: "1"}
+functions:
+  enabled: true
+  scaleDownSeconds: 30
+keda:
+  enabled: true
+kserve:
+  enabled: true
+  storageSecretName: kionga-model-storage
+  storageEgress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kionga-data}}}]
+      ports: [{port: 9000}]
+networkPolicy:
+  enabled: true
+  externalEgress:
+    # PostgreSQL, MLflow and the object store run in kionga-data in this lane.
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kionga-data}}}]
+      ports: [{port: 5432}, {port: 5000}, {port: 9000}]
+    # The Kubernetes API: the kubernetes Service and the kind node network.
+    - to: [{ipBlock: {cidr: 10.96.0.1/32}}, {ipBlock: {cidr: 172.16.0.0/12}}]
+      ports: [{port: 443}, {port: 6443}]
+preflight:
+  enabled: true

@@ -195,6 +195,67 @@ make public-up DEPLOYMENT=/etc/kionga/deployment.json    # single server
 make k8s-tools && make kind-up                           # local Kubernetes
 ```
 
+## Kubernetes: applications, functions and model endpoints
+
+On Kubernetes every Kionga workload is a self-healing, autoscaling pod:
+applications (`<name>.<applications.baseDomain>`), Kionga-native functions
+(scale to zero, no OpenFaaS), agents, model endpoints (KServe raw mode) and
+pipelines (Kubernetes Jobs). Compose installs keep faasd and Prefect and hide
+applications.
+
+1. Install the prerequisites (cert-manager, KEDA, the KEDA HTTP add-on, KServe),
+   pinned in [`helm/prerequisites/versions.env`](helm/prerequisites/versions.env):
+   `make k8s-prerequisites CONTEXT=my-cluster`. See
+   [`helm/prerequisites/README.md`](helm/prerequisites/README.md) for the ingress
+   controller requirements and the wildcard certificate.
+2. Turn the features on in your values: `applications.enabled`,
+   `applications.baseDomain`, `applications.tls`, `functions.enabled`,
+   `keda.enabled`, `kserve.enabled` (see `helm/production.example.yaml`).
+3. Install the chart. Its preflight stops `helm install` and names the first
+   missing CRD, ClusterIssuer or wildcard TLS Secret; `helm template` still
+   renders offline (`preflight.enforceOffline` checks against `--api-versions`).
+
+### Kubernetes CRDs
+
+The chart installs `config/crd` (rendered from `helm/kionga/files/crds`, a link to
+it) and keeps them on uninstall. CRDs applied earlier with `kubectl apply -f
+config/crd` must be adopted once before the first install with `crds.install`
+on:
+
+```bash
+for crd in $(kubectl get crd -o name | grep '\.kionga\.dev$'); do
+  kubectl label "$crd" app.kubernetes.io/managed-by=Helm --overwrite
+  kubectl annotate "$crd" meta.helm.sh/release-name=kionga meta.helm.sh/release-namespace=kionga-system --overwrite
+done
+```
+
+Or set `crds.install=false` and keep applying them yourself.
+
+### Managed operations
+
+With `operations.access.enabled`, the chart grants the Kionga operations team
+(subjects from your identity provider, plus a ServiceAccount) read access to
+Kionga's objects, logs and events and the right to restart and roll out Kionga
+Deployments. No Secret access unless `allowSecretRead`, never exec or
+port-forward. Every grant is labelled `kionga.dev/access=operations`:
+`kubectl get roles,rolebindings,clusterroles,clusterrolebindings -A -l kionga.dev/access=operations`.
+
+`make support-bundle CONTEXT=my-cluster` writes a tarball with versions, the Helm
+release, Kionga resource status, events, pod status and recent logs. It never
+reads Secrets and redacts credentials; review it before sending.
+
+### Live-cluster lane
+
+The **Kubernetes e2e** workflow (`.github/workflows/kubernetes-e2e.yml`, run it
+from the Actions tab) builds images from the selected component refs, installs
+the prerequisites and the chart on kind with sslip.io host names, and runs
+`scripts/e2e-runtime.py`: an application answers at its host, a deleted pod
+recovers, load scales it up, a function scales to zero and wakes, an agent and a
+model become Ready and the model predicts, a pipeline runs through the Jobs
+executor. It cannot pass until the operator controllers and the applications API
+are in kiongahq/platform; until then, dispatch it with `platform_ref` set to their
+branch. Locally, `scripts/kind-ci-up.sh` does the same on Linux with Docker.
+
 ## Documentation
 
 - Product documentation: [Install Kionga](https://kiongahq.github.io/docs/getting-started/installation/),

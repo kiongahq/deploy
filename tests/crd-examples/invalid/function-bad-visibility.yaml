@@ -1,0 +1,5 @@
+# Unknown visibility.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaFunction
+metadata: {name: vis, namespace: default}
+spec: {image: nginx, visibility: internet}

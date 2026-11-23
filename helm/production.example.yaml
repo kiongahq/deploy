@@ -45,6 +45,28 @@ config:
   WORKSPACE_PREFECT_URL: https://prefect.internal.example.com/api
   WORKSPACE_LANGFUSE_URL: https://langfuse.internal.example.com
   WORKSPACE_KAFKA_REST_URL: https://kafka-rest.internal.example.com
+# Applications, functions and model endpoints. Off unless enabled; install helm/prerequisites first.
+#applications:
+#  enabled: true
+#  baseDomain: apps.example.com
+#  tls:
+#    clusterIssuer: letsencrypt-dns01 # Replace with your DNS-01 ClusterIssuer.
+#    secretName: kionga-applications-tls
+#functions:
+#  enabled: true
+#keda:
+#  enabled: true
+#kserve:
+#  enabled: true
+#  storageSecretName: kionga-model-storage
+#  storageEgress:
+#    - to: [{ipBlock: {cidr: 192.0.2.0/24}}] # Replace with the object store.
+#      ports: [{port: 443}]
+#pipelineExecutor:
+#  kubernetes: true
+#  namespace: kionga-pipelines
+#website:
+#  url: https://kionga.example.com
 # Agent team sandboxes, off unless enabled. See helm/kionga/values.yaml.
 #sandbox:
 #  enabled: true

@@ -363,3 +363,60 @@ def test_operations_secret_read_needs_the_explicit_flag(tmp_path):
 def test_operations_access_refuses_bad_subjects(tmp_path, access, message):
     result = render_raw(tmp_path, operations={"access": access})
     assert result.returncode != 0 and message in result.stderr
+
+
+def test_private_ca_reaches_every_component_without_replacing_system_roots(tmp_path):
+    assert "SSL_CERT_DIR" not in env(render_chart(tmp_path), "gateway")
+    docs = render_chart(tmp_path, trustedCA={"configMapName": "corp-ca", "key": "ca.crt"})
+    for deployment in (d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].startswith("kionga-")
+                       and "app.kubernetes.io/instance" in d["spec"]["template"]["metadata"]["labels"]):
+        pod = deployment["spec"]["template"]["spec"]
+        container = pod["containers"][0]
+        values = {e["name"]: e.get("value") for e in container["env"]}
+        assert values["SSL_CERT_DIR"] == "/etc/ssl/certs:/etc/kionga/ca"
+        assert {"name": "trusted-ca", "mountPath": "/etc/kionga/ca", "readOnly": True} in container["volumeMounts"]
+        assert {"name": "trusted-ca", "configMap": {"name": "corp-ca", "items": [{"key": "ca.crt", "path": "ca.crt"}]}} in pod["volumes"]
+
+
+def test_kind_lane_values_render_with_every_feature_on(tmp_path):
+    images = {name: f"localhost:5001/kionga/{name}@sha256:" + "b" * 64 for name in
+              yaml.safe_load((ROOT / "helm/kionga/values.yaml").read_text())["images"]}
+    file = tmp_path / "images.yaml"
+    file.write_text(yaml.safe_dump({"images": images}))
+    result = subprocess.run([helm_binary(), "template", "kionga", str(ROOT / "helm/kionga"), "--namespace", "kionga-system",
+                             "-f", str(ROOT / "kind/ci/values.yaml"), "-f", str(file)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    docs = [d for d in yaml.safe_load_all(result.stdout) if d]
+    values = env(docs, "operator")
+    assert values["KIONGA_APPLICATIONS_BASE_DOMAIN"] == "apps.127.0.0.1.sslip.io"
+    assert values["KIONGA_FUNCTIONS_SCALEDOWN_SECONDS"] == "30"
+    gateway = env(docs, "gateway")
+    assert gateway["KIONGA_EXECUTOR"] == "kubernetes" and gateway["SSL_CERT_DIR"].endswith("/etc/kionga/ca")
+    assert find(docs, "Ingress", "kionga-applications")["metadata"]["annotations"]["traefik.ingress.kubernetes.io/router.priority"] == "1"
+
+
+def _unknown_fields(value, schema, path="spec"):
+    """Fields in value that the structural schema does not declare."""
+    if isinstance(value, dict) and "properties" in schema:
+        found = []
+        for key, item in value.items():
+            if key not in schema["properties"]:
+                found.append(f"{path}.{key}")
+            else:
+                found += _unknown_fields(item, schema["properties"][key], f"{path}.{key}")
+        return found
+    return []
+
+
+def test_crd_examples_cover_every_new_kind_and_use_declared_fields():
+    crds = {doc["spec"]["names"]["kind"]: doc for doc in source_crds().values()}
+    valid = [d for d in yaml.safe_load_all((ROOT / "tests/crd-examples/valid.yaml").read_text()) if d]
+    assert {"KiongaApplication", "KiongaFunction", "KiongaModelDeployment", "KiongaAgent"} <= {d["kind"] for d in valid}
+    for doc in valid:
+        schema = crds[doc["kind"]]["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]
+        assert not _unknown_fields(doc["spec"], schema), doc["metadata"]["name"]
+    invalid = sorted((ROOT / "tests/crd-examples/invalid").glob("*.yaml"))
+    assert len(invalid) >= 10
+    for path in invalid:
+        doc = yaml.safe_load(path.read_text())
+        assert doc["kind"] in crds and path.read_text().startswith("#"), path.name

@@ -1,0 +1,5 @@
+# Neither image nor source.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: neither, namespace: default}
+spec: {port: 8080}

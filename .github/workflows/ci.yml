@@ -40,8 +40,19 @@ jobs:
         run: |
           kubectl create namespace kionga-system
           kubectl create namespace kionga-workloads
+          # The API server validates every schema and CEL rule in config/crd.
           kubectl apply -f config/crd/
-          kubectl wait --for=condition=Established crd/kiongaworkspaces.kionga.dev --timeout=90s
+          kubectl wait --for=condition=Established crd/kiongaworkspaces.kionga.dev crd/kiongaapplications.kionga.dev \
+            crd/kiongafunctions.kionga.dev crd/kiongamodeldeployments.kionga.dev --timeout=90s
+      - name: CRD validation accepts and refuses the examples
+        run: |
+          kubectl apply --dry-run=server -f tests/crd-examples/valid.yaml
+          for example in tests/crd-examples/invalid/*.yaml; do
+            if kubectl apply --dry-run=server -f "$example" 2>"$RUNNER_TEMP/out"; then
+              echo "accepted but must be refused: $example" >&2; exit 1
+            fi
+            echo "refused as expected: $example: $(tail -1 "$RUNNER_TEMP/out")"
+          done
       - name: Reconcile Langflow workspace
         run: |
           KIONGA_TARGET_NAMESPACE=kionga-workloads \
@@ -71,5 +82,5 @@ jobs:
       - run: python -m pip install pytest pyyaml boto3
       - run: python -m pytest -q tests
       - run: helm lint helm/kionga --strict
-      - run: bash -n public-up.sh scripts/*.sh
-      - run: python -m py_compile vm/up.py scripts/verify-production.py scripts/cloud-preflight.py scripts/build_inputs.py objectstore-init.py scripts/migrate_objects.py
+      - run: bash -n public-up.sh scripts/*.sh helm/prerequisites/install.sh
+      - run: python -m py_compile vm/up.py scripts/verify-production.py scripts/cloud-preflight.py scripts/build_inputs.py objectstore-init.py scripts/migrate_objects.py scripts/support-bundle.py scripts/e2e-runtime.py

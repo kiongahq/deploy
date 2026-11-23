@@ -48,7 +48,13 @@ Caddy stays the only public listener.
 ### `helm/`
 
 `helm/kionga` is the chart (`kubeVersion >= 1.29`): workloads, config, RBAC,
-network policies, edge and monitoring templates. `production.example.yaml`,
+network policies, edge and monitoring templates, Kionga's CRDs
+(`templates/crds.yaml` renders `files/crds`, a link to `config/crd`), applications
+and functions (`templates/applications.yaml`: wildcard certificate, fallback
+Ingress, build namespace, NetworkPolicies), the cluster preflight
+(`templates/preflight.yaml`) and opt-in managed operations access
+(`templates/operations-access.yaml`). `helm/prerequisites` installs cert-manager,
+KEDA, the KEDA HTTP add-on and KServe at pinned versions. `production.example.yaml`,
 `providers/` (EKS, GKE, AKS and storage classes) and `secretstore-*.example.yaml`
 are starting points for real clusters.
 
@@ -68,6 +74,9 @@ mTLS, PostgreSQL backups, Dex and Vault security settings.
   and k6 load tests.
 - `bootstrap-k8s-tools.sh`, `kind-up.sh`, `e2e-kind.sh`, `deploy-kubernetes.sh`,
   `cloud-preflight.py`, `verify-production.py`: the Kubernetes path.
+- `kind-ci-up.sh`, `e2e-runtime.py` and `kind/ci/`: the live-cluster lane
+  (`.github/workflows/kubernetes-e2e.yml`). `support-bundle.py`: redacted
+  diagnostics from a Kubernetes install.
 - `migrate-minio-to-rustfs.sh` with `migrate_objects.py`: copy an older MinIO
   volume into RustFS, verified per object.
 

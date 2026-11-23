@@ -1,0 +1,5 @@
+# Both image and source.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: both, namespace: default}
+spec: {image: nginx, source: {git: "https://github.com/x/y.git"}}

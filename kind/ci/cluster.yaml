@@ -1,0 +1,19 @@
+# kind cluster for the Kubernetes e2e workflow (.github/workflows/kubernetes-e2e.yml).
+# Like kind/cluster.yaml, plus host ports 80/443 to Traefik's NodePorts so
+# <name>.apps.127.0.0.1.sslip.io reaches the ingress controller, and containerd
+# reads registry hosts from /etc/containerd/certs.d for the local registry the
+# workflow pushes CI-built images to (never a public registry).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kionga-e2e
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - {containerPort: 30080, hostPort: 80, listenAddress: 127.0.0.1, protocol: TCP}
+      - {containerPort: 30443, hostPort: 443, listenAddress: 127.0.0.1, protocol: TCP}
+  - role: worker
+  - role: worker

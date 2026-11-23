@@ -225,6 +225,14 @@ pipelineExecutor:
   kubernetes: false
   namespace: kionga-pipelines
 
+# A private certificate authority the platform components trust in addition to
+# the system roots, for PostgreSQL with sslmode=verify-full, an internal
+# identity provider or object store. A ConfigMap in the release namespace with
+# the PEM bundle under key. Empty: system roots only.
+trustedCA:
+  configMapName: ""
+  key: ca.crt
+
 # Kionga's own CustomResourceDefinitions (config/crd), rendered from
 # files/crds. They carry helm.sh/resource-policy: keep, so uninstalling the
 # release never deletes them or the resources users created. Set false when you

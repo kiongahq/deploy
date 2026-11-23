@@ -1,0 +1,41 @@
+# Accepted by the CRDs in config/crd; CI applies these with --dry-run=server.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: billing, namespace: default}
+spec:
+  image: traefik/whoami:v1.11.0
+  replicas: {min: 0, max: 5}
+  scaling: {metric: requests, target: 20}
+  healthPath: /health
+---
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: from-source, namespace: default}
+spec:
+  source: {git: "https://github.com/example/app.git", ref: main, contextDir: web, secretRef: {name: git-credentials}}
+  scaling: {metric: cpu, target: 70}
+---
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaFunction
+metadata: {name: resize, namespace: default}
+spec:
+  image: ghcr.io/example/resize:1
+---
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaModelDeployment
+metadata: {name: churn, namespace: default}
+spec:
+  modelName: churn
+  version: "3"
+  modelFormat: {name: sklearn}
+  canary: {version: "4", weight: 10}
+---
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaAgent
+metadata: {name: support, namespace: default}
+spec:
+  version: "1"
+  image: ghcr.io/example/agent:1
+  graphModule: agents.support:build
+  replicas: {min: 1, max: 3}
+  scaling: {metric: requests, target: 10}

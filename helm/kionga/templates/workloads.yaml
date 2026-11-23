@@ -147,6 +147,12 @@ spec:
             # Secret names; create the Secrets there too.
             - {name: KIONGA_IMAGE_PULL_SECRETS, value: {{ join "," $pullSecrets | quote }}}
             {{- end }}
+            {{- if $.Values.trustedCA.configMapName }}
+            # Private CA for PostgreSQL, the identity provider or internal
+            # endpoints, added to the system roots. PostgreSQL can also name it:
+            # sslrootcert=/etc/kionga/ca/{{ $.Values.trustedCA.key }}.
+            - {name: SSL_CERT_DIR, value: "/etc/ssl/certs:/etc/kionga/ca"}
+            {{- end }}
             {{- range $component.secrets }}
             - {name: {{ . }}_FILE, value: /run/secrets/{{ . }}}
             {{- end }}
@@ -183,11 +189,20 @@ spec:
             {{- if and (eq $name "gateway") $.Values.agentDesigner.enabled }}
             - {name: designer-token, mountPath: /run/designer, readOnly: true}
             {{- end }}
+            {{- if $.Values.trustedCA.configMapName }}
+            - {name: trusted-ca, mountPath: /etc/kionga/ca, readOnly: true}
+            {{- end }}
       volumes:
         - name: config
           configMap: {name: {{ $.Release.Name }}-config}
         - name: tmp
           emptyDir: {sizeLimit: 128Mi}
+        {{- if $.Values.trustedCA.configMapName }}
+        - name: trusted-ca
+          configMap:
+            name: {{ $.Values.trustedCA.configMapName }}
+            items: [{key: {{ $.Values.trustedCA.key }}, path: {{ $.Values.trustedCA.key }}}]
+        {{- end }}
         {{- if and (eq $name "gateway") $.Values.agentDesigner.enabled }}
         - name: designer-token
           secret:

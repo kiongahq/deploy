@@ -1,0 +1,5 @@
+# The name becomes a host label: no dots.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: bad.name, namespace: default}
+spec: {image: nginx}
