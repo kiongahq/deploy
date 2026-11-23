@@ -298,6 +298,11 @@ def test_model_servers_are_fenced_and_reach_only_the_object_store(tmp_path):
     assert policy["ingress"][0]["from"][1] == {"podSelector": {"matchExpressions": [{"key": "kionga.dev/agent", "operator": "Exists"}]}}
     assert {"podSelector": {}} not in policy["ingress"][0]["from"], "not every pod in the namespace"
     assert policy["egress"][1:] == storage
+    agents = find(render_chart(tmp_path, **ON), "NetworkPolicy", "kionga-agents-to-models", "kionga-workloads")["spec"]
+    assert agents["podSelector"] == {"matchExpressions": [{"key": "kionga.dev/agent", "operator": "Exists"}]}
+    assert agents["policyTypes"] == ["Egress"]
+    assert agents["egress"] == [{"to": [{"podSelector": {"matchExpressions": [
+        {"key": "serving.kserve.io/inferenceservice", "operator": "Exists"}]}}]}]
 
 
 def test_network_policies_follow_the_global_switch(tmp_path):

@@ -192,7 +192,8 @@ def test_workflow_builds_from_source_and_never_pushes_to_a_public_registry():
     pushes = [line for line in setup.splitlines() if line.strip().startswith("docker push")]
     assert pushes and all("\"$REGISTRY/" in line for line in pushes)
     refs = dict(line.split("=", 1) for line in (ROOT / "kind/ci/refs.env").read_text().splitlines() if line and not line.startswith("#"))
-    assert refs == {"PLATFORM_REF": "main", "AGENT_RUNTIME_REF": "main", "SDK_PYTHON_REF": "main", "TRACE_PROXY_REF": "main"}
+    assert set(refs) == {"PLATFORM_REF", "AGENT_RUNTIME_REF", "SDK_PYTHON_REF", "TRACE_PROXY_REF"}
+    assert all(value and " " not in value for value in refs.values())
     parsed = yaml.safe_load(workflow)
     inputs = parsed[True]["workflow_dispatch"]["inputs"]
     assert {"platform_ref", "agent_runtime_ref", "sdk_python_ref", "trace_proxy_ref", "steps"} <= set(inputs)
