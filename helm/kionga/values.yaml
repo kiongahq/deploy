@@ -330,12 +330,21 @@ keda:
 # KServe in raw (Standard) mode for model endpoints (KiongaModelDeployment).
 kserve:
   enabled: false
-  # Standard is KServe's current name for RawDeployment; both mean no Knative.
-  deploymentMode: Standard
+  # RawDeployment (the operator's default) and Standard both mean plain
+  # Deployments with no Knative; KServe 0.21 accepts either.
+  deploymentMode: RawDeployment
   # Secret in workspaceNamespace with the object store credentials model servers
   # read artifacts with (keys AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). Use a
   # read-only identity.
   storageSecretName: kionga-model-storage
+  # Object store the model servers read from. Empty endpoint: AWS S3.
+  storage:
+    endpoint: ""          # host:port, e.g. objectstore.internal:9000
+    useHTTPS: true
+    region: ""            # default us-east-1
+    # The bucket behind MLflow's artifact proxy, e.g. s3://kionga-models, when
+    # MLflow serves artifacts itself (mlflow-artifacts:/ URIs).
+    artifactsDestination: ""
   # Egress rules for predictor pods to reach the object store, e.g.
   # [{to: [{ipBlock: {cidr: 10.0.40.0/24}}], ports: [{port: 443}]}].
   storageEgress: []

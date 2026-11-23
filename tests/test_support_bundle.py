@@ -65,6 +65,17 @@ def test_diagnostic_text_survives(text):
     assert bundle.redact(text) == text
 
 
+def test_literal_env_values_are_removed_but_names_and_references_stay():
+    yaml_text = ("    env:\n    - name: BILLING_DSN\n      value: plain-literal-1\n"
+                 "    - name: FROM_SECRET\n      valueFrom:\n        secretKeyRef: {name: s, key: k}\n")
+    out = bundle.redact(yaml_text)
+    assert "plain-literal-1" not in out and "BILLING_DSN" in out and "secretKeyRef" in out
+    json_text = '{"env": [{"name": "BILLING_DSN", "value": "plain-literal-2"}, {"name": "X",\n "value": "with \\"quote\\""}]}'
+    out = bundle.redact(json_text)
+    assert "plain-literal-2" not in out and "quote" not in out and '"BILLING_DSN"' in out
+    assert json.loads(out)["env"][0]["value"] == R
+
+
 def test_redaction_keeps_the_url_shape():
     assert bundle.redact("postgres://kionga:pw@db:5432/x") == f"postgres://kionga:{R}@db:5432/x"
 

@@ -12,7 +12,7 @@ apiVersion: kionga.dev/v1alpha1
 kind: KiongaApplication
 metadata: {name: from-source, namespace: default}
 spec:
-  source: {git: "https://github.com/example/app.git", ref: main, contextDir: web, secretRef: {name: git-credentials}}
+  source: {git: "https://github.com/example/app.git", ref: main, contextDir: web}
   scaling: {metric: cpu, target: 70}
 ---
 apiVersion: kionga.dev/v1alpha1
@@ -20,6 +20,7 @@ kind: KiongaFunction
 metadata: {name: resize, namespace: default}
 spec:
   image: ghcr.io/example/resize:1
+  visibility: internal
 ---
 apiVersion: kionga.dev/v1alpha1
 kind: KiongaModelDeployment
@@ -27,7 +28,7 @@ metadata: {name: churn, namespace: default}
 spec:
   modelName: churn
   version: "3"
-  modelFormat: {name: sklearn}
+  modelFormat: sklearn
   canary: {version: "4", weight: 10}
 ---
 apiVersion: kionga.dev/v1alpha1

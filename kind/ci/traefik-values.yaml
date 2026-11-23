@@ -1,7 +1,8 @@
 # Traefik for the kind e2e lane. NodePorts answer on every node, and kind maps
 # the control-plane node's 30080/30443 to the runner's 127.0.0.1:80/443.
 service:
-  type: NodePort
+  spec:
+    type: NodePort
 ports:
   web:
     nodePort: 30080

@@ -4,8 +4,9 @@ every per-workload object (Deployment, Service, Ingress, PodDisruptionBudget,
 KEDA objects, InferenceService). This file owns what is shared by all of them:
 the wildcard certificate, the fallback wildcard Ingress, the build namespace and
 the NetworkPolicies. Pod selection relies on the operator's labels:
-kionga.dev/workload=application|function on application and function pods, and
-KServe's serving.kserve.io/inferenceservice on predictor pods.
+kionga.dev/component=application|function on application and function pods,
+kionga.dev/agent on agent pods, and KServe's serving.kserve.io/inferenceservice
+on predictor pods.
 */ -}}
 {{- $apps := .Values.applications }}
 {{- $dns := "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$" }}
@@ -148,7 +149,7 @@ metadata:
 spec:
   podSelector:
     matchExpressions:
-      - {key: kionga.dev/workload, operator: In, values: [application, function]}
+      - {key: kionga.dev/component, operator: In, values: [application, function]}
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
@@ -173,9 +174,9 @@ spec:
 {{- end }}
 {{- if .Values.kserve.enabled }}
 ---
-# Model servers accept requests from the gateway and from agents in the same
-# namespace (llm.inferenceServiceRef), and reach the object store through
-# kserve.storageEgress to load their artifacts.
+# Model servers accept requests from the gateway and from agent pods in the same
+# namespace (llm.inferenceServiceRef), nothing else, and reach the object store
+# through kserve.storageEgress to load their artifacts.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -192,7 +193,9 @@ spec:
             matchLabels: {kubernetes.io/metadata.name: {{ .Release.Namespace }}}
           podSelector:
             matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: gateway}
-        - podSelector: {}
+        - podSelector:
+            matchExpressions:
+              - {key: kionga.dev/agent, operator: Exists}
   egress:
     - to:
         - namespaceSelector:

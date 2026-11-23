@@ -1,155 +1,361 @@
-# A request-driven function. Same reconciliation as KiongaApplication, but it
-# scales to zero on requests by default and has no public host unless
-# visibility asks for one. The gateway invokes it at /api/v1/functions/<name>/invoke.
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
   name: kiongafunctions.kionga.dev
 spec:
   group: kionga.dev
-  scope: Namespaced
   names:
-    plural: kiongafunctions
-    singular: kiongafunction
     kind: KiongaFunction
-    shortNames: [kfn]
-    categories: [kionga]
+    listKind: KiongaFunctionList
+    plural: kiongafunctions
+    shortNames:
+    - kfn
+    singular: kiongafunction
+  scope: Namespaced
   versions:
-    - name: v1alpha1
-      served: true
-      storage: true
-      subresources:
-        status: {}
-      additionalPrinterColumns:
-        - {name: Phase, type: string, jsonPath: .status.phase}
-        - {name: URL, type: string, jsonPath: .status.url}
-        - {name: Ready, type: integer, jsonPath: .status.readyReplicas}
-        - {name: Min, type: integer, jsonPath: .spec.replicas.min, priority: 1}
-        - {name: Max, type: integer, jsonPath: .spec.replicas.max, priority: 1}
-        - {name: Scaling, type: string, jsonPath: .spec.scaling.metric, priority: 1}
-        - {name: Age, type: date, jsonPath: .metadata.creationTimestamp}
-      schema:
-        openAPIV3Schema:
-          type: object
-          required: [spec]
-          x-kubernetes-validations:
-            # The name becomes the first label of the public host name.
-            - rule: self.metadata.name.matches('^[a-z]([-a-z0-9]*[a-z0-9])?$') && size(self.metadata.name) <= 63
-              message: the name must be a DNS label (lowercase letters, digits and '-', at most 63 characters) because it becomes a host name
-          properties:
-            spec:
-              type: object
-              x-kubernetes-validations:
-                - rule: has(self.image) != has(self.source)
-                  message: set exactly one of image or source
-                - rule: "!(has(self.scaling) && self.scaling.metric == 'cpu' && self.replicas.min == 0)"
-                  message: cpu scaling cannot scale to zero; use replicas.min >= 1 or scaling.metric requests
-              properties:
-                image: {type: string, minLength: 1, maxLength: 512}
-                source:
-                  type: object
-                  required: [git]
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Status
+      type: string
+    - jsonPath: .status.readyReplicas
+      name: Ready
+      type: integer
+    - jsonPath: .status.internalURL
+      name: Internal URL
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          KiongaFunction is an HTTP function. It scales to zero on requests by
+          default and has no public host unless visibility says so.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: WorkloadSpec is the shared shape of applications and functions.
+            properties:
+              env:
+                items:
+                  description: |-
+                    EnvVar is a literal environment variable. Secret values come from
+                    secretRefs, never from arbitrary valueFrom references.
                   properties:
-                    git:
+                    name:
+                      pattern: ^[A-Za-z_][A-Za-z0-9_]*$
                       type: string
-                      maxLength: 2048
-                      pattern: '^https://[^@\s]+$'
-                      description: HTTPS clone URL without credentials; a private repository uses source.secretRef.
-                    ref: {type: string, maxLength: 255, description: Branch, tag or commit; the default branch when empty.}
-                    contextDir: {type: string, maxLength: 1024, pattern: '^[^/].*$|^$'}
-                    dockerfile: {type: string, maxLength: 1024, default: Dockerfile}
-                    secretRef:
-                      type: object
-                      required: [name]
-                      description: A Secret in the same namespace with keys username and password (or token) for cloning.
+                    value:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              healthPath:
+                description: |-
+                  HealthPath is the HTTP path for startup, readiness and liveness probes.
+                  Empty probes the port over TCP.
+                pattern: ^(/[^\s]*)?$
+                type: string
+              image:
+                description: Image runs a prebuilt image. Exactly one of image and
+                  source is set.
+                type: string
+              port:
+                description: Port is the container port that serves HTTP. Default
+                  8080.
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
+              replicas:
+                description: |-
+                  WorkloadReplicaSpec bounds an application or function replica count. min 0
+                  allows scale to zero, which needs requests scaling.
+                properties:
+                  max:
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                  min:
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                required:
+                - max
+                - min
+                type: object
+                x-kubernetes-validations:
+                - message: max replicas must be greater than or equal to min replicas
+                  rule: self.max >= self.min
+              resources:
+                description: ResourceRequirements describes the compute resource requirements.
+                properties:
+                  claims:
+                    description: |-
+                      Claims lists the names of resources, defined in spec.resourceClaims,
+                      that are used by this container.
+
+                      This is an alpha field and requires enabling the
+                      DynamicResourceAllocation feature gate.
+
+                      This field is immutable. It can only be set for containers.
+                    items:
+                      description: ResourceClaim references one entry in PodSpec.ResourceClaims.
                       properties:
-                        name: {type: string, pattern: '^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$', maxLength: 253}
-                port: {type: integer, minimum: 1, maximum: 65535, default: 8080}
-                env:
-                  type: array
-                  maxItems: 100
-                  x-kubernetes-list-type: map
-                  x-kubernetes-list-map-keys: [name]
-                  items:
-                    type: object
-                    required: [name]
-                    properties:
-                      name: {type: string, pattern: '^[A-Za-z_][A-Za-z0-9_]*$', maxLength: 253}
-                      value: {type: string, maxLength: 32768}
-                secretRefs:
-                  type: array
-                  maxItems: 20
-                  description: Secrets in the application's namespace exposed to the container as environment variables.
-                  x-kubernetes-list-type: map
-                  x-kubernetes-list-map-keys: [name]
-                  items:
-                    type: object
-                    required: [name]
-                    properties:
-                      name: {type: string, pattern: '^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$', maxLength: 253}
-                resources:
-                  type: object
-                  properties:
-                    requests:
+                        name:
+                          description: |-
+                            Name must match the name of one entry in pod.spec.resourceClaims of
+                            the Pod where this field is used. It makes that resource available
+                            inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
+                          type: string
+                      required:
+                      - name
                       type: object
-                      additionalProperties:
-                        x-kubernetes-int-or-string: true
-                        anyOf: [{type: integer}, {type: string}]
-                    limits:
-                      type: object
-                      additionalProperties:
-                        x-kubernetes-int-or-string: true
-                        anyOf: [{type: integer}, {type: string}]
-                replicas:
-                  type: object
-                  default: {min: 0, max: 10}
-                  required: [min, max]
-                  x-kubernetes-validations:
-                    - rule: self.max >= self.min
-                      message: max replicas must be greater than or equal to min replicas
-                  properties:
-                    min: {type: integer, minimum: 0, maximum: 100}
-                    max: {type: integer, minimum: 1, maximum: 100}
-                scaling:
-                  type: object
-                  required: [metric]
-                  description: requests scales on in-flight HTTP requests through KEDA and allows scale to zero; cpu is the HorizontalPodAutoscaler fallback.
-                  properties:
-                    metric: {type: string, enum: [requests, cpu]}
-                    target: {type: integer, minimum: 1, maximum: 100000, description: In-flight requests per replica, or average CPU percent.}
-                healthPath: {type: string, pattern: '^/', maxLength: 1024}
-                visibility: {type: string, enum: [private, public, sso], default: private}
-            status:
-              type: object
-              properties:
-                phase: {type: string}
-                url: {type: string}
-                image: {type: string, description: The image the Deployment runs, after a source build.}
-                replicas: {type: integer}
-                readyReplicas: {type: integer}
-                observedGeneration: {type: integer, format: int64}
-                lastBuild:
-                  type: object
-                  properties:
-                    name: {type: string}
-                    phase: {type: string}
-                    image: {type: string}
-                    ref: {type: string}
-                    commit: {type: string}
-                    startedAt: {type: string, format: date-time}
-                    finishedAt: {type: string, format: date-time}
-                    message: {type: string}
-                conditions:
-                  type: array
-                  x-kubernetes-list-type: map
-                  x-kubernetes-list-map-keys: [type]
-                  items:
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Limits describes the maximum amount of compute resources allowed.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
-                    required: [type, status]
-                    properties:
-                      type: {type: string}
-                      status: {type: string, enum: ["True", "False", Unknown]}
-                      reason: {type: string}
-                      message: {type: string}
-                      observedGeneration: {type: integer, format: int64}
-                      lastTransitionTime: {type: string, format: date-time}
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Requests describes the minimum amount of compute resources required.
+                      If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                type: object
+              scaling:
+                description: |-
+                  ScalingSpec selects the autoscaling signal. An empty metric lets the
+                  operator choose: requests when the KEDA HTTP add-on is installed, cpu
+                  otherwise.
+                properties:
+                  metric:
+                    enum:
+                    - requests
+                    - cpu
+                    type: string
+                  target:
+                    description: |-
+                      Target is concurrent requests per replica for requests, or average CPU
+                      utilization percent for cpu. 0 means the operator default (100 requests,
+                      70 percent).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                type: object
+              secretRefs:
+                items:
+                  description: |-
+                    SecretReference names a Secret in the workload namespace whose keys become
+                    environment variables. The Secret must carry the label
+                    kionga.dev/workload-secret=true.
+                  properties:
+                    name:
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              source:
+                description: Source builds the image from Git.
+                properties:
+                  contextDir:
+                    description: ContextDir is the build context inside the repository.
+                    pattern: ^[A-Za-z0-9._/-]*$
+                    type: string
+                  dockerfile:
+                    description: Dockerfile is the path of the Dockerfile relative
+                      to contextDir.
+                    pattern: ^[A-Za-z0-9._/-]*$
+                    type: string
+                  git:
+                    description: Git is the repository URL, for example https://github.com/acme/billing.git.
+                    minLength: 1
+                    pattern: ^(https://|ssh://|git@)[^\s#]+$
+                    type: string
+                  ref:
+                    description: Ref is a branch, tag or commit. Empty means the default
+                      branch.
+                    pattern: ^[A-Za-z0-9._/-]*$
+                    type: string
+                required:
+                - git
+                type: object
+              visibility:
+                description: |-
+                  Visibility is public, sso or internal. Applications default to sso,
+                  functions to internal.
+                enum:
+                - public
+                - sso
+                - internal
+                type: string
+            type: object
+            x-kubernetes-validations:
+            - message: set exactly one of image or source
+              rule: has(self.image) != has(self.source)
+          status:
+            description: WorkloadStatus is the shared status of applications and functions.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              image:
+                description: Image is the image the Deployment runs.
+                type: string
+              internalURL:
+                description: |-
+                  InternalURL is the in-cluster address the gateway calls. With requests
+                  scaling it goes through the KEDA HTTP interceptor.
+                type: string
+              lastBuild:
+                description: BuildStatus records the most recent source build.
+                properties:
+                  completedAt:
+                    format: date-time
+                    type: string
+                  image:
+                    description: Image is the pushed image by digest, set once the
+                      build succeeds.
+                    type: string
+                  message:
+                    type: string
+                  name:
+                    description: Name is the build Job.
+                    type: string
+                  phase:
+                    description: Phase is Running, Succeeded or Failed.
+                    type: string
+                  sourceHash:
+                    description: SourceHash identifies the source and redeploy request
+                      the build ran for.
+                    type: string
+                  startedAt:
+                    format: date-time
+                    type: string
+                type: object
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                description: Phase is Pending, Building, Progressing, Ready, Degraded
+                  or Failed.
+                type: string
+              readyReplicas:
+                format: int32
+                type: integer
+              scalingMetric:
+                type: string
+              url:
+                description: |-
+                  URL is the public address, https://<name>.<baseDomain>, when the
+                  workload has an Ingress.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

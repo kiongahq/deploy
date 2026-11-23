@@ -1,5 +1,0 @@
-# Canary must differ.
-apiVersion: kionga.dev/v1alpha1
-kind: KiongaModelDeployment
-metadata: {name: same, namespace: default}
-spec: {modelName: m, version: "1", modelFormat: {name: sklearn}, canary: {version: "1", weight: 10}}

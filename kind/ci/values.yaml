@@ -56,6 +56,10 @@ keda:
 kserve:
   enabled: true
   storageSecretName: kionga-model-storage
+  storage:
+    endpoint: objectstore.kionga-data.svc:9000
+    useHTTPS: false
+    artifactsDestination: s3://kionga-models
   storageEgress:
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kionga-data}}}]
       ports: [{port: 9000}]

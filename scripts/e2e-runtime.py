@@ -408,13 +408,13 @@ class Runner:
     def step_model(self) -> str:
         name = "e2e-iris"
         self.kube.apply({"apiVersion": "kionga.dev/v1alpha1", "kind": "KiongaModelDeployment", "metadata": {"name": name, "namespace": self.s.namespace},
-                         "spec": {"modelName": self.s.model_name, "version": self.s.model_version, "modelFormat": {"name": "sklearn"},
+                         "spec": {"modelName": self.s.model_name, "version": self.s.model_version, "modelFormat": "sklearn",
                                   "replicas": {"min": 1, "max": 1}}})
         deployment = poll(lambda: (lambda o: o if is_ready(o) else None)(self.kube.get("kiongamodeldeployment", name)), self.s.timeout * 2, 5,
                           what="KiongaModelDeployment Ready", describe_last=lambda _: describe(self.kube.get("kiongamodeldeployment", name)))
         status = deployment.get("status") or {}
-        if not str(status.get("storageUri", "")).startswith("s3://"):
-            raise StepFailed(f"storageUri {status.get('storageUri')!r} was not resolved to the object store")
+        if not str(status.get("storageURI", "")).startswith("s3://"):
+            raise StepFailed(f"storageURI {status.get('storageURI')!r} was not resolved to the object store")
         service, namespace, port = service_from_url(status["url"])
         predict = predict_path(status["url"], status.get("inferenceServiceRef") or name)
         with self.kube.port_forward(f"svc/{service}", port, namespace) as local:

@@ -2,4 +2,4 @@
 apiVersion: kionga.dev/v1alpha1
 kind: KiongaModelDeployment
 metadata: {name: heavy, namespace: default}
-spec: {modelName: m, version: "1", modelFormat: {name: sklearn}, canary: {version: "2", weight: 150}}
+spec: {modelName: m, version: "1", modelFormat: sklearn, canary: {version: "2", weight: 150}}

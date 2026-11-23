@@ -1,0 +1,5 @@
+# Ports start at 1.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: portzero, namespace: default}
+spec: {image: nginx, port: 0}

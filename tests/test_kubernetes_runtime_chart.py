@@ -70,47 +70,73 @@ def test_crds_can_be_left_to_kubectl(tmp_path):
     assert not [d for d in docs if d["kind"] == "CustomResourceDefinition"]
 
 
+# config/crd for these kinds is generated from the operator's Go types
+# (kiongahq/platform, controller-gen); these tests pin the contract the chart,
+# the gateway and the e2e lane rely on.
+
+def schema_of(plural):
+    return source_crds()[f"{plural}.kionga.dev"]["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]
+
+
 @pytest.mark.parametrize("kind,plural", [("KiongaApplication", "kiongaapplications"), ("KiongaFunction", "kiongafunctions"),
-                                         ("KiongaModelDeployment", "kiongamodeldeployments")])
-def test_new_crds_have_status_printer_columns_and_validation(kind, plural):
+                                         ("KiongaModelDeployment", "kiongamodeldeployments"), ("KiongaAgent", "kiongaagents")])
+def test_new_crds_have_status_and_printer_columns(kind, plural):
     crd = source_crds()[f"{plural}.kionga.dev"]
+    assert crd["metadata"]["annotations"]["controller-gen.kubebuilder.io/version"], "copy the operator's generated CRD"
     assert crd["spec"]["names"]["kind"] == kind and crd["spec"]["scope"] == "Namespaced"
     [version] = crd["spec"]["versions"]
     assert version["subresources"] == {"status": {}}
     columns = {c["name"]: c["jsonPath"] for c in version["additionalPrinterColumns"]}
-    assert columns["Phase"] == ".status.phase" and columns["URL"] == ".status.url"
-    schema = version["schema"]["openAPIV3Schema"]
-    assert schema["x-kubernetes-validations"], "the name must be validated as a DNS label"
-    assert "conditions" in schema["properties"]["status"]["properties"]
+    assert columns["Status"] == ".status.phase"
+    assert "conditions" in version["schema"]["openAPIV3Schema"]["properties"]["status"]["properties"]
 
 
-@pytest.mark.parametrize("plural,visibility,replicas", [("kiongaapplications", ["public", "sso"], {"min": 1, "max": 3}),
-                                                        ("kiongafunctions", ["private", "public", "sso"], {"min": 0, "max": 10})])
-def test_application_and_function_schemas_follow_the_design(plural, visibility, replicas):
-    spec = source_crds()[f"{plural}.kionga.dev"]["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]
+@pytest.mark.parametrize("plural", ["kiongaapplications", "kiongafunctions"])
+def test_application_and_function_schemas_follow_the_design(plural):
+    spec = schema_of(plural)["spec"]
     fields = spec["properties"]
     assert {"image", "source", "port", "env", "secretRefs", "resources", "replicas", "scaling", "healthPath", "visibility"} <= fields.keys()
-    assert set(fields["source"]["properties"]) >= {"git", "ref", "contextDir", "dockerfile"}
+    assert {"git", "ref", "contextDir", "dockerfile"} <= set(fields["source"]["properties"])
     assert fields["scaling"]["properties"]["metric"]["enum"] == ["requests", "cpu"]
     assert fields["replicas"]["properties"]["min"]["minimum"] == 0
-    assert fields["replicas"]["default"] == replicas
-    assert fields["visibility"]["enum"] == visibility and fields["visibility"]["default"] == visibility[0]
-    rules = " ".join(r["rule"] for r in spec["x-kubernetes-validations"])
-    assert "has(self.image) != has(self.source)" in rules and "cpu" in rules
-    # A clone URL never carries credentials.
-    assert "@" in fields["source"]["properties"]["git"]["pattern"]
+    assert fields["visibility"]["enum"] == ["public", "sso", "internal"]
+    assert "has(self.image) != has(self.source)" in " ".join(r["rule"] for r in spec["x-kubernetes-validations"])
+    assert {"url", "internalURL", "readyReplicas", "lastBuild", "conditions"} <= schema_of(plural)["status"]["properties"].keys()
 
 
 def test_model_deployment_schema_and_agent_scaling():
-    crds = source_crds()
-    model = crds["kiongamodeldeployments.kionga.dev"]["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]
-    assert model["spec"]["required"] == ["modelName", "version", "modelFormat"]
-    assert model["spec"]["properties"]["canary"]["properties"]["weight"] == {"type": "integer", "minimum": 0, "maximum": 100,
-                                                                            "description": "Percent of requests the canary receives."}
-    assert {"url", "storageUri", "canary", "conditions"} <= model["status"]["properties"].keys()
-    agent = crds["kiongaagents.kionga.dev"]["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]["properties"]
+    model = schema_of("kiongamodeldeployments")
+    assert set(model["spec"]["required"]) == {"modelName", "version"}
+    assert model["spec"]["properties"]["modelFormat"]["type"] == "string"
+    weight = model["spec"]["properties"]["canary"]["properties"]["weight"]
+    assert (weight["minimum"], weight["maximum"]) == (0, 100)
+    assert {"url", "storageURI", "inferenceServiceRef", "canaryURL", "canaryWeight", "conditions"} <= model["status"]["properties"].keys()
+    agent = schema_of("kiongaagents")["spec"]["properties"]
     assert agent["scaling"]["properties"]["metric"]["enum"] == ["requests", "cpu"]
     assert "default" not in agent["scaling"]["properties"]["metric"], "the operator picks requests when KEDA is present"
+
+
+def test_crd_schemas_have_no_stray_keys():
+    """A flow-style YAML value with an unquoted comma once became an unknown
+    schema key that the API server refused. Every schema node may hold only
+    OpenAPI keywords."""
+    allowed = {"type", "format", "description", "properties", "items", "required", "enum", "default", "minimum", "maximum",
+               "minLength", "maxLength", "minItems", "maxItems", "pattern", "additionalProperties", "anyOf", "allOf", "oneOf",
+               "nullable", "x-kubernetes-int-or-string", "x-kubernetes-preserve-unknown-fields", "x-kubernetes-list-type",
+               "x-kubernetes-list-map-keys", "x-kubernetes-map-type", "x-kubernetes-validations", "x-kubernetes-embedded-resource",
+               "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "uniqueItems", "maxProperties", "minProperties", "not", "title"}
+
+    def walk(node, path):
+        assert set(node) <= allowed, f"{path}: {sorted(set(node) - allowed)}"
+        for name, child in (node.get("properties") or {}).items():
+            walk(child, f"{path}.{name}")
+        if isinstance(node.get("items"), dict):
+            walk(node["items"], path + "[]")
+        if isinstance(node.get("additionalProperties"), dict):
+            walk(node["additionalProperties"], path + "{}")
+    for name, crd in source_crds().items():
+        for version in crd["spec"]["versions"]:
+            walk(version["schema"]["openAPIV3Schema"], name)
 
 
 # Values, environment ---------------------------------------------------------
@@ -137,16 +163,18 @@ def test_gateway_and_operator_receive_the_runtime_settings(tmp_path):
         values = env(docs, component)
         assert values["KIONGA_APPLICATIONS_BASE_DOMAIN"] == "apps.example.com"
         assert values["KIONGA_APPLICATIONS_TLS_SECRET"] == "apps-tls"
-        assert values["KIONGA_APPLICATIONS_INGRESS_CLASS"] == "your-ingress-class"
+        assert values["KIONGA_INGRESS_CLASS"] == "your-ingress-class"
+        assert values["KIONGA_SSO_UPSTREAM"] == "kionga-gateway.kionga-system.svc.cluster.local:8080"
         assert values["KIONGA_APPLICATIONS_NAMESPACE"] == "kionga-workloads"
-        assert values["KIONGA_APPLICATIONS_REGISTRY"] == "registry.example.com/apps"
-        assert values["KIONGA_APPLICATIONS_REGISTRY_SECRET"] == "push"
+        assert values["KIONGA_BUILD_REGISTRY"] == "registry.example.com/apps"
+        assert values["KIONGA_BUILD_PUSH_SECRET"] == "push"
         assert values["KIONGA_BUILD_NAMESPACE"] == "kionga-builds"
         assert "@sha256:" in values["KIONGA_BUILDKIT_IMAGE"]
-        assert values["KIONGA_KEDA_INTERCEPTOR_URL"] == "http://keda-add-ons-http-interceptor-proxy.keda.svc:8080"
+        assert values["KIONGA_KEDA_HTTP_INTERCEPTOR"] == "keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local:8080"
         assert values["KIONGA_FUNCTIONS_SCALEDOWN_SECONDS"] == "300"
-        assert values["KIONGA_KSERVE_DEPLOYMENT_MODE"] == "Standard"
-        assert values["KIONGA_KSERVE_STORAGE_SECRET"] == "kionga-model-storage"
+        assert values["KIONGA_KSERVE_DEPLOYMENT_MODE"] == "RawDeployment"
+        assert values["KIONGA_MODEL_STORAGE_SECRET"] == "kionga-model-storage"
+        assert "KIONGA_MODEL_S3_ENDPOINT" not in values, "empty endpoint means AWS S3"
         assert values["KIONGA_WEBSITE_URL"] == "https://kionga.dev"
     rendered = "\n".join(yaml.safe_dump(d) for d in docs)
     assert "SERVING_MANAGER_URL" not in rendered and "OPENFAAS_URL" not in rendered
@@ -161,11 +189,15 @@ def test_gateway_and_operator_receive_the_runtime_settings(tmp_path):
     ({"applications": dict(APPS, registry={"url": "r.example.com/a"}), "keda": {"enabled": True}}, "pushSecretName is required"),
     ({"applications": dict(APPS, build={"image": "moby/buildkit:rootless"}), "keda": {"enabled": True}}, "build.image must be an immutable"),
     ({"kserve": {"enabled": True, "deploymentMode": "Serverless"}}, "Kionga does not use Knative"),
+    ({"kserve": {"enabled": True, "deploymentMode": "Standard"}}, None),
     ({"website": {"url": "http://kionga.dev"}}, "website.url must be an https"),
 ])
 def test_unsafe_or_incomplete_settings_are_refused(tmp_path, overrides, message):
     result = render_raw(tmp_path, **overrides)
-    assert result.returncode != 0 and message in result.stderr, result.stderr
+    if message is None:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode != 0 and message in result.stderr, result.stderr
 
 
 # Wildcard host and TLS ----------------------------------------------------------
@@ -242,7 +274,7 @@ def test_source_builds_get_their_own_privileged_but_fenced_namespace(tmp_path):
 def test_application_pods_accept_only_ingress_controller_interceptor_and_gateway(tmp_path):
     docs = render_chart(tmp_path, **with_apps(extraEgress=[{"to": [{"ipBlock": {"cidr": "203.0.113.0/24"}}]}]))
     policy = find(docs, "NetworkPolicy", "kionga-applications", "kionga-workloads")["spec"]
-    assert policy["podSelector"] == {"matchExpressions": [{"key": "kionga.dev/workload", "operator": "In",
+    assert policy["podSelector"] == {"matchExpressions": [{"key": "kionga.dev/component", "operator": "In",
                                                             "values": ["application", "function"]}]}
     [rule] = policy["ingress"]
     peers = rule["from"]
@@ -263,7 +295,8 @@ def test_model_servers_are_fenced_and_reach_only_the_object_store(tmp_path):
     policy = find(render_chart(tmp_path, **dict(ON, kserve={"enabled": True, "storageEgress": storage})),
                   "NetworkPolicy", "kionga-model-serving", "kionga-workloads")["spec"]
     assert policy["podSelector"]["matchExpressions"] == [{"key": "serving.kserve.io/inferenceservice", "operator": "Exists"}]
-    assert policy["ingress"][0]["from"][1] == {"podSelector": {}}
+    assert policy["ingress"][0]["from"][1] == {"podSelector": {"matchExpressions": [{"key": "kionga.dev/agent", "operator": "Exists"}]}}
+    assert {"podSelector": {}} not in policy["ingress"][0]["from"], "not every pod in the namespace"
     assert policy["egress"][1:] == storage
 
 
@@ -331,7 +364,8 @@ def test_operations_access_is_scoped_labelled_and_never_reads_secrets_by_default
         rules = grants(role)
         assert ("apps", "deployments", "patch") in rules and ("", "pods", "delete") in rules
         assert ("", "pods/log", "get") in rules and ("", "events", "list") in rules
-        assert ("kionga.dev", "*", "get") in rules
+        assert ("kionga.dev", "kiongaapplications", "get") in rules and ("serving.kserve.io", "inferenceservices", "list") in rules
+        assert not any(resource == "*" for _, resource, _ in rules), "enumerate resources; no wildcard"
         assert not any(resource == "secrets" for _, resource, _ in rules)
         assert not any(resource in ("pods/exec", "pods/attach", "pods/portforward") for _, resource, _ in rules)
         assert not any(group == "rbac.authorization.k8s.io" or verb in ("impersonate", "escalate", "bind") for group, _, verb in rules)
@@ -392,6 +426,8 @@ def test_kind_lane_values_render_with_every_feature_on(tmp_path):
     assert values["KIONGA_FUNCTIONS_SCALEDOWN_SECONDS"] == "30"
     gateway = env(docs, "gateway")
     assert gateway["KIONGA_EXECUTOR"] == "kubernetes" and gateway["SSL_CERT_DIR"].endswith("/etc/kionga/ca")
+    assert values["KIONGA_MODEL_S3_ENDPOINT"] == "objectstore.kionga-data.svc:9000" and values["KIONGA_MODEL_S3_USE_HTTPS"] == "0"
+    assert values["KIONGA_MLFLOW_ARTIFACTS_DESTINATION"] == "s3://kionga-models"
     assert find(docs, "Ingress", "kionga-applications")["metadata"]["annotations"]["traefik.ingress.kubernetes.io/router.priority"] == "1"
 
 

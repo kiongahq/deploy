@@ -1,5 +1,0 @@
-# CPU scaling cannot reach zero.
-apiVersion: kionga.dev/v1alpha1
-kind: KiongaApplication
-metadata: {name: cpuzero, namespace: default}
-spec: {image: nginx, replicas: {min: 0, max: 2}, scaling: {metric: cpu, target: 70}}

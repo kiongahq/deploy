@@ -2,8 +2,8 @@
 """Collect a redacted support bundle from a Kionga install on Kubernetes.
 
 Read-only: it runs `helm` and `kubectl get/logs` and writes one .tar.gz. It
-never reads Secrets, and every collected text passes through redact() before it
-is written. Collected: tool and cluster versions, the Helm release (status,
+never reads Secrets, every literal environment value is removed, and every
+collected text passes through redact() before it is written. Collected: tool and cluster versions, the Helm release (status,
 history, user-supplied values), nodes, prerequisite CRDs, Kionga custom
 resources with their status, workloads, pods, events, and recent logs of every
 container in the Kionga namespaces.
@@ -61,9 +61,18 @@ def _field(match: re.Match[str]) -> str:
     return match.group("key") + REDACTED
 
 
+# Literal environment values in pod specs and Kionga resources (YAML and JSON).
+# A value's name says nothing about its content, so every literal is removed and
+# only the name is kept. valueFrom references carry no value and survive.
+_ENV_YAML = re.compile(r"(?m)^(?P<lead>[ \t]*-?[ \t]*name:[ \t]*[^\n]+\n[ \t]*value:[ \t]*)(?P<value>(?!\[REDACTED\])[^\n]+)$")
+_ENV_JSON = re.compile(r'(?P<lead>"name":\s*"[^"]*",\s*"value":\s*)"(?:[^"\\]|\\.)*"')
+
+
 def redact(text: str) -> str:
     """Remove credentials from free text, logs, JSON and YAML."""
     text = _PATTERNS[0][0].sub(_PATTERNS[0][1], text)
+    text = _ENV_YAML.sub(lambda m: m.group("lead") + REDACTED, text)
+    text = _ENV_JSON.sub(lambda m: m.group("lead") + '"' + REDACTED + '"', text)
     text = _FIELD.sub(_field, text)
     for pattern, replacement in _PATTERNS[1:]:
         text = pattern.sub(replacement, text)
