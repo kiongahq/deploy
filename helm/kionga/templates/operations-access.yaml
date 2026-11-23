@@ -37,7 +37,6 @@ automountServiceAccountToken: false
 {{- $namespaces := list .Release.Namespace .Values.workspaceNamespace }}
 {{- if .Values.pipelineExecutor.kubernetes }}{{ $namespaces = append $namespaces .Values.pipelineExecutor.namespace }}{{ end }}
 {{- if .Values.sandbox.enabled }}{{ $namespaces = append $namespaces .Values.sandbox.namespace }}{{ end }}
-{{- if and .Values.applications.enabled .Values.applications.registry.url }}{{ $namespaces = append $namespaces .Values.applications.build.namespace }}{{ end }}
 {{- range $namespace := uniq $namespaces }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -70,7 +69,7 @@ rules:
     resources: [events]
     verbs: [get, list, watch]
   - apiGroups: [kionga.dev]
-    resources: [kiongaapplications, kiongafunctions, kiongamodeldeployments, kiongaagents, kiongaworkspaces, kiongapipelineruns,
+    resources: [kiongaapplications, kiongafunctions, kiongamodeldeployments, kiongaagents, kiongaworkspaces,
                 kiongamodelpromotions, kiongatools, kiongaconnections]
     verbs: [get, list, watch]
   - apiGroups: [keda.sh]

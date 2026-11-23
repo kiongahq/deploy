@@ -22,7 +22,7 @@ kubectl --context "$context" get namespace "$namespace" >/dev/null
 rendered="$(helm template kionga "$root/helm/kionga" --namespace "$namespace" "${values_args[@]}")"
 # The chart installs Kionga's CRDs unless crds.install=false; then they must exist.
 if [[ "$rendered" != *'kind: CustomResourceDefinition'* ]]; then
-  for crd in kiongaagents kiongaworkspaces kiongapipelineruns kiongamodelpromotions kiongatools kiongaconnections \
+  for crd in kiongaagents kiongaworkspaces kiongamodelpromotions kiongatools kiongaconnections \
     kiongaapplications kiongafunctions kiongamodeldeployments; do
     kubectl --context "$context" get crd "$crd.kionga.dev" >/dev/null
   done

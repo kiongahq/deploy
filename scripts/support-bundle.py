@@ -87,7 +87,7 @@ def default_runner(argv: list[str]) -> subprocess.CompletedProcess:
 
 
 KIONGA_KINDS = ["kiongaapplications", "kiongafunctions", "kiongamodeldeployments", "kiongaagents", "kiongaworkspaces",
-                "kiongapipelineruns", "kiongamodelpromotions", "kiongatools", "kiongaconnections"]
+                "kiongamodelpromotions", "kiongatools", "kiongaconnections"]
 WORKLOAD_KINDS = ["deployments", "replicasets", "statefulsets", "jobs", "services", "endpoints", "ingresses", "networkpolicies",
                   "poddisruptionbudgets", "horizontalpodautoscalers", "persistentvolumeclaims", "resourcequotas", "configmaps"]
 ADDON_KINDS = ["scaledobjects.keda.sh", "httpscaledobjects.http.keda.sh", "interceptorroutes.http.keda.sh",
@@ -140,9 +140,6 @@ class Collector:
             found.append(values["pipelineExecutor"].get("namespace") or "kionga-pipelines")
         if (values.get("sandbox") or {}).get("enabled"):
             found.append(values["sandbox"].get("namespace") or "kionga-sandboxes")
-        applications = values.get("applications") or {}
-        if applications.get("enabled") and (applications.get("registry") or {}).get("url"):
-            found.append((applications.get("build") or {}).get("namespace") or "kionga-builds")
         return list(dict.fromkeys(found))
 
     def collect(self) -> Bundle:

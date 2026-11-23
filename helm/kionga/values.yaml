@@ -34,7 +34,6 @@ config:
   KAFKA_REST_URL: ""
   MLFLOW_URL: ""
   PREFECT_API_URL: ""
-  KFP_URL: ""
   S3_ENDPOINT: ""
   S3_REGION: us-east-1
   KIONGA_TRUSTED_WORKSPACE_PROXY: "false"
@@ -288,12 +287,10 @@ applications:
     # Plain-HTTP registry, for a cluster-local registry only.
     insecure: false
   build:
-    # Builds run here, not in workspaceNamespace: rootless BuildKit needs an
-    # unconfined seccomp profile, which the restricted Pod Security level of the
-    # workload namespace refuses. The chart labels this namespace privileged,
-    # denies all ingress, and allows egress only to DNS, public HTTPS/HTTP (git
-    # and registries) and extraEgress. Create registry.pushSecretName here too.
-    namespace: kionga-builds
+    # Builds run as Jobs in workspaceNamespace. Rootless BuildKit needs an
+    # unconfined seccomp profile, so with registry.url set the chart enforces the
+    # privileged Pod Security level there (restricted is still warned and
+    # audited). Build pods may reach DNS, public HTTPS/HTTP and extraEgress.
     # Egress rules for a registry or git server on a private network.
     extraEgress: []
     # Rootless BuildKit, pinned by digest.
@@ -352,6 +349,11 @@ kserve:
 # Public marketing site the console links to. Empty: no link.
 website:
   url: ""
+
+# Blog authoring in the console (editorial workspace). Off by default: the blog
+# lives on the marketing site.
+blog:
+  authoringEnabled: false
 
 # Managed operations: lets the Kionga operations team operate this install in
 # your cluster. Off by default. Creates a ServiceAccount plus Roles in every

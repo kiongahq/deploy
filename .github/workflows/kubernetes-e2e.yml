@@ -16,6 +16,9 @@ on:
       platform_ref:
         description: kiongahq/platform branch, tag or commit (gateway, operator, Go services)
         default: main
+      gateway_ref:
+        description: kiongahq/platform ref for the gateway image only (empty uses platform_ref)
+        default: ""
       agent_runtime_ref:
         description: kiongahq/agent-runtime ref
         default: main
@@ -56,22 +59,28 @@ jobs:
       - name: Check out the components at the selected refs
         env:
           INPUT_PLATFORM_REF: ${{ inputs.platform_ref }}
+          INPUT_GATEWAY_REF: ${{ inputs.gateway_ref }}
           INPUT_AGENT_RUNTIME_REF: ${{ inputs.agent_runtime_ref }}
           INPUT_SDK_PYTHON_REF: ${{ inputs.sdk_python_ref }}
           INPUT_TRACE_PROXY_REF: ${{ inputs.trace_proxy_ref }}
         run: |
           source kind/ci/refs.env
           PLATFORM_REF="${INPUT_PLATFORM_REF:-$PLATFORM_REF}"
+          GATEWAY_REF="${INPUT_GATEWAY_REF:-${GATEWAY_REF:-}}"
           AGENT_RUNTIME_REF="${INPUT_AGENT_RUNTIME_REF:-$AGENT_RUNTIME_REF}"
           SDK_PYTHON_REF="${INPUT_SDK_PYTHON_REF:-$SDK_PYTHON_REF}"
           TRACE_PROXY_REF="${INPUT_TRACE_PROXY_REF:-$TRACE_PROXY_REF}"
-          fetch() {
-            git init -q "$KIONGA_SRC/$1"
-            git -C "$KIONGA_SRC/$1" fetch -q --depth=1 "https://github.com/kiongahq/$1.git" "$2"
-            git -C "$KIONGA_SRC/$1" checkout -q FETCH_HEAD
-            echo "$1 $2 $(git -C "$KIONGA_SRC/$1" rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
+          fetch() { # fetch REPO REF [DIRECTORY]
+            dir="$KIONGA_SRC/${3:-$1}"
+            git init -q "$dir"
+            git -C "$dir" fetch -q --depth=1 "https://github.com/kiongahq/$1.git" "$2"
+            git -C "$dir" checkout -q FETCH_HEAD
+            echo "${3:-$1} $2 $(git -C "$dir" rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
           }
           fetch platform "$PLATFORM_REF"
+          if [ -n "$GATEWAY_REF" ]; then
+            fetch platform "$GATEWAY_REF" platform-gateway
+          fi
           fetch agent-runtime "$AGENT_RUNTIME_REF"
           fetch sdk-python "$SDK_PYTHON_REF"
           fetch trace-proxy "$TRACE_PROXY_REF"
@@ -97,7 +106,7 @@ jobs:
         if: always()
         run: |
           if [ -f "$OUT/e2e-report.json" ]; then
-            python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("| Step | Result | Seconds | Detail |\n|---|---|---|---|"); [print(f"| {x[\"step\"]} | {x[\"status\"]} | {x[\"seconds\"]} | {x[\"detail\"][:200].replace(\"|\", \"/\")} |") for x in r]' "$OUT/e2e-report.json" >> "$GITHUB_STEP_SUMMARY"
+            python3 scripts/e2e-runtime.py --summarize "$OUT/e2e-report.json" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Collect a support bundle
         if: always()

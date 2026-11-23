@@ -111,7 +111,7 @@ def test_collector_follows_kionga_namespaces_and_never_reads_secrets():
         kinds = [token for arg in argv for token in arg.lower().split(",")]
         assert "secrets" not in kinds and "secret" not in kinds, argv
         assert ("--context" in argv and "prod" in argv) or ("--kube-context" in argv) or argv[:2] == ["helm", "version"]
-    for namespace in ("kionga-system", "tenant-workloads", "runs", "kionga-builds"):
+    for namespace in ("kionga-system", "tenant-workloads", "runs"):
         assert f"namespaces/{namespace}/events.txt" in result.files
         assert f"namespaces/{namespace}/kionga-resources.yaml" in result.files
     logs = result.files["namespaces/kionga-system/logs/kionga-gateway-1/gateway.log"]

@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Values.workspaceNamespace }}
 rules:
   - apiGroups: [kionga.dev]
-    resources: [kiongaagents, kiongaagents/status, kiongaworkspaces, kiongaworkspaces/status, kiongapipelineruns, kiongapipelineruns/status, kiongamodelpromotions, kiongamodelpromotions/status, kiongatools, kiongatools/status, kiongaconnections, kiongaconnections/status, kiongaapplications, kiongaapplications/status, kiongafunctions, kiongafunctions/status, kiongamodeldeployments, kiongamodeldeployments/status]
+    resources: [kiongaagents, kiongaagents/status, kiongaworkspaces, kiongaworkspaces/status, kiongamodelpromotions, kiongamodelpromotions/status, kiongatools, kiongatools/status, kiongaconnections, kiongaconnections/status, kiongaapplications, kiongaapplications/status, kiongafunctions, kiongafunctions/status, kiongamodeldeployments, kiongamodeldeployments/status]
     verbs: [get, list, watch, create, update, patch, delete]
   # Finalizers let the operator clean up what a deleted application owned.
   - apiGroups: [kionga.dev]
@@ -28,6 +28,13 @@ rules:
   - apiGroups: [""]
     resources: [pods]
     verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  # Source builds run as Jobs; the operator watches them to roll the Deployment.
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch, create, update, patch, delete]
   # Request-based scaling and scale to zero (KEDA core and HTTP add-on).
   - apiGroups: [keda.sh]
     resources: [scaledobjects]
@@ -64,7 +71,7 @@ metadata:
   namespace: {{ .Values.workspaceNamespace }}
 rules:
   - apiGroups: [kionga.dev]
-    resources: [kiongaagents, kiongaworkspaces, kiongapipelineruns, kiongamodelpromotions, kiongatools, kiongaconnections]
+    resources: [kiongaagents, kiongaworkspaces, kiongamodelpromotions, kiongatools, kiongaconnections]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -135,10 +142,10 @@ rules:
     resources: [virtualservices, destinationrules, inferenceservices]
     verbs: [get, list, watch]
   - apiGroups: [kionga.dev, apps, autoscaling, ""]
-    resources: [kiongaagents, kiongaworkspaces, kiongapipelineruns, kiongamodelpromotions, kiongatools, kiongaconnections, deployments, horizontalpodautoscalers, services, persistentvolumeclaims, secrets, configmaps]
+    resources: [kiongaagents, kiongaworkspaces, kiongamodelpromotions, kiongatools, kiongaconnections, deployments, horizontalpodautoscalers, services, persistentvolumeclaims, secrets, configmaps]
     verbs: [get, list, watch]
-  - apiGroups: [kionga.dev, networking.k8s.io, policy, "", keda.sh, http.keda.sh]
-    resources: [kiongaapplications, kiongafunctions, kiongamodeldeployments, ingresses, poddisruptionbudgets, serviceaccounts, pods, scaledobjects, httpscaledobjects, interceptorroutes]
+  - apiGroups: [kionga.dev, networking.k8s.io, policy, "", keda.sh, http.keda.sh, batch]
+    resources: [kiongaapplications, kiongafunctions, kiongamodeldeployments, ingresses, poddisruptionbudgets, serviceaccounts, pods, scaledobjects, httpscaledobjects, interceptorroutes, jobs]
     verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

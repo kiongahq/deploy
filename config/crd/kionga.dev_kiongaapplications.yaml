@@ -211,9 +211,12 @@ spec:
                     pattern: ^[A-Za-z0-9._/-]*$
                     type: string
                   git:
-                    description: Git is the repository URL, for example https://github.com/acme/billing.git.
+                    description: |-
+                      Git is a public HTTPS repository URL, for example
+                      https://github.com/acme/billing.git. Builds carry no Git credentials, so
+                      SSH URLs and credentials embedded in the URL are rejected.
                     minLength: 1
-                    pattern: ^(https://|ssh://|git@)[^\s#]+$
+                    pattern: ^https://[^\s#@]+$
                     type: string
                   ref:
                     description: Ref is a branch, tag or commit. Empty means the default

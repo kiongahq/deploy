@@ -52,7 +52,10 @@ build() { # build NAME CONTEXT [docker build args...]
   IMAGES[$name]="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/kionga/$name:e2e")"
   echo "$name -> ${IMAGES[$name]}"
 }
-build gateway "$SRC/platform" -f "$SRC/platform/Dockerfile.gateway"
+# The gateway can come from a different platform ref (platform-gateway checkout).
+GATEWAY_SRC="$SRC/platform"
+[[ -d "$SRC/platform-gateway" ]] && GATEWAY_SRC="$SRC/platform-gateway"
+build gateway "$GATEWAY_SRC" -f "$GATEWAY_SRC/Dockerfile.gateway"
 for service in operator integration-worker feature-gateway storage-proxy; do
   build "$service" "$SRC/platform/go" --build-arg "SERVICE=$service"
 done

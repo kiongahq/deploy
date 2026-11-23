@@ -12,7 +12,7 @@ preflight.enforceOffline is set, in which case the API groups come from
 {{- $install := "Install the prerequisites with helm/prerequisites/install.sh (see helm/prerequisites/README.md), or turn the feature off." }}
 {{- $required := list }}
 {{- if not .Values.crds.install }}
-{{- range $kind := list "KiongaAgent" "KiongaWorkspace" "KiongaPipelineRun" "KiongaModelPromotion" "KiongaTool" "KiongaConnection" "KiongaApplication" "KiongaFunction" "KiongaModelDeployment" }}
+{{- range $kind := list "KiongaAgent" "KiongaWorkspace" "KiongaModelPromotion" "KiongaTool" "KiongaConnection" "KiongaApplication" "KiongaFunction" "KiongaModelDeployment" }}
 {{- $required = append $required (list (printf "kionga.dev/v1alpha1/%s" $kind) "crds.install=false" "apply config/crd first (kubectl apply -f config/crd)") }}
 {{- end }}
 {{- end }}

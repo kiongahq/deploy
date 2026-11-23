@@ -38,12 +38,16 @@ jobs:
           reader_id="$(openssl rand -hex 24)"
           reader_secret="$(openssl rand -hex 24)"
           sandbox_token="$(openssl rand -hex 24)"
+          postgres_password="$(openssl rand -hex 24)"
           echo "::add-mask::$key"
           echo "::add-mask::$reader_id"
           echo "::add-mask::$reader_secret"
           echo "::add-mask::$sandbox_token"
+          echo "::add-mask::$postgres_password"
           {
             echo "KIONGA_SANDBOX_TOKEN=$sandbox_token"
+            # compose.yaml has no PostgreSQL default; local-up.sh generates one.
+            echo "POSTGRES_PASSWORD=$postgres_password"
             echo "SERVING_OBJECTSTORE_ACCESS_KEY=$reader_id"
             echo "SERVING_OBJECTSTORE_SECRET_KEY=$reader_secret"
             echo "TRACE_PROXY_PROJECT_KEY=$key"
@@ -67,12 +71,16 @@ jobs:
           reader_id="$(openssl rand -hex 24)"
           reader_secret="$(openssl rand -hex 24)"
           sandbox_token="$(openssl rand -hex 24)"
+          postgres_password="$(openssl rand -hex 24)"
           echo "::add-mask::$key"
           echo "::add-mask::$reader_id"
           echo "::add-mask::$reader_secret"
           echo "::add-mask::$sandbox_token"
+          echo "::add-mask::$postgres_password"
           {
             echo "KIONGA_SANDBOX_TOKEN=$sandbox_token"
+            # compose.yaml has no PostgreSQL default; local-up.sh generates one.
+            echo "POSTGRES_PASSWORD=$postgres_password"
             echo "SERVING_OBJECTSTORE_ACCESS_KEY=$reader_id"
             echo "SERVING_OBJECTSTORE_SECRET_KEY=$reader_secret"
             echo "TRACE_PROXY_PROJECT_KEY=$key"

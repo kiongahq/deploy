@@ -281,6 +281,7 @@ class Settings:
     model_name: str
     model_version: str
     keda_namespace: str = "keda"
+    control_namespace: str = "kionga-system"
     interceptor_service: str = "keda-add-ons-http-interceptor-proxy"
     interceptor_port: int = 8080
     app: str = "e2e-web"
@@ -427,15 +428,24 @@ class Runner:
         return f"{status['url']} predicted {predictions}"
 
     def step_pipeline(self) -> str:
-        base = self.s.gateway_url.rstrip("/")
-        origin = {"Origin": base}
-        code, body = self.http.request("POST", f"{base}/auth/local/login", form={"username": self.s.local_user, "password": self.s.local_password},
-                                       headers=origin)
-        if code >= 400 or not any(c for c in self.http.jar):
+        # Local sign-in sessions live in one gateway replica's memory, so every
+        # call goes to the same pod through a port-forward.
+        pods = json.loads(self.kube.run("get", "pods", "-l", "app.kubernetes.io/component=gateway", "--field-selector=status.phase=Running",
+                                        "-o", "json", namespace=self.s.control_namespace))["items"]
+        if not pods:
+            raise StepFailed("no running gateway pod")
+        with self.kube.port_forward(f"pod/{pods[0]['metadata']['name']}", 8080, self.s.control_namespace) as port:
+            return self._pipeline(f"http://127.0.0.1:{port}", Http(None))
+
+    def _pipeline(self, base: str, client: "Http") -> str:
+        origin = {"Origin": self.s.gateway_url.rstrip("/")}
+        code, body = client.request("POST", f"{base}/auth/local/login", form={"username": self.s.local_user, "password": self.s.local_password},
+                                    headers=origin)
+        if code >= 400 or not any(c for c in client.jar):
             raise StepFailed(f"local sign-in failed ({code}): {body[:200]}")
 
         def api(method: str, path: str, payload: Any = None) -> dict:
-            code, text = self.http.request(method, f"{base}{path}", body=payload, headers=origin)
+            code, text = client.request(method, f"{base}{path}", body=payload, headers=origin)
             if code >= 300:
                 raise StepFailed(f"{method} {path} returned {code}: {text[:300]}")
             return json.loads(text) if text else {}
@@ -481,7 +491,21 @@ def run_steps(runner: Runner, selected: list[str]) -> list[dict]:
     return results
 
 
+def summary_table(results: list[dict]) -> str:
+    """A Markdown table of step results for the workflow summary."""
+    lines = ["| Step | Result | Seconds | Detail |", "|---|---|---|---|"]
+    for item in results:
+        detail = str(item.get("detail", ""))[:200].replace("|", "/").replace("\n", " ")
+        lines.append(f"| {item['step']} | {item['status']} | {item['seconds']} | {detail} |")
+    return "\n".join(lines)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["--summarize"]:
+        with open(argv[1]) as handle:
+            print(summary_table(json.load(handle)))
+        return 0
     parser = argparse.ArgumentParser(description="Kionga Kubernetes e2e checks")
     parser.add_argument("--context", required=True)
     parser.add_argument("--namespace", default="kionga-workloads")

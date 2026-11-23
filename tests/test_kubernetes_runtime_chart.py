@@ -168,13 +168,18 @@ def test_gateway_and_operator_receive_the_runtime_settings(tmp_path):
         assert values["KIONGA_APPLICATIONS_NAMESPACE"] == "kionga-workloads"
         assert values["KIONGA_BUILD_REGISTRY"] == "registry.example.com/apps"
         assert values["KIONGA_BUILD_PUSH_SECRET"] == "push"
-        assert values["KIONGA_BUILD_NAMESPACE"] == "kionga-builds"
+        assert values["KIONGA_BUILD_REGISTRY_INSECURE"] == "false"
+        assert "KIONGA_BUILD_NAMESPACE" not in values, "builds run in the workload namespace"
         assert "@sha256:" in values["KIONGA_BUILDKIT_IMAGE"]
         assert values["KIONGA_KEDA_HTTP_INTERCEPTOR"] == "keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local:8080"
+        assert values["KIONGA_KEDA_INTERCEPTOR_URL"] == "http://keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local:8080"
+        assert values["KIONGA_TARGET_NAMESPACE"] == "kionga-workloads"
+        assert values["KIONGA_BLOG_AUTHORING_ENABLED"] == "false"
         assert values["KIONGA_FUNCTIONS_SCALEDOWN_SECONDS"] == "300"
         assert values["KIONGA_KSERVE_DEPLOYMENT_MODE"] == "RawDeployment"
         assert values["KIONGA_MODEL_STORAGE_SECRET"] == "kionga-model-storage"
-        assert "KIONGA_MODEL_S3_ENDPOINT" not in values, "empty endpoint means AWS S3"
+        assert values["KIONGA_MODEL_S3_ENDPOINT"] == "" and values["KIONGA_MODEL_S3_USE_HTTPS"] == "1"
+        assert values["KIONGA_MODEL_S3_REGION"] == "us-east-1" and values["KIONGA_MLFLOW_ARTIFACTS_DESTINATION"] == ""
         assert values["KIONGA_WEBSITE_URL"] == "https://kionga.dev"
     rendered = "\n".join(yaml.safe_dump(d) for d in docs)
     assert "SERVING_MANAGER_URL" not in rendered and "OPENFAAS_URL" not in rendered
@@ -234,13 +239,14 @@ def test_operator_rbac_covers_the_new_workloads_and_stays_namespaced(tmp_path):
                             ("apps", "deployments"), ("", "services"), ("networking.k8s.io", "ingresses"),
                             ("policy", "poddisruptionbudgets"), ("", "serviceaccounts"), ("keda.sh", "scaledobjects"),
                             ("http.keda.sh", "httpscaledobjects"), ("http.keda.sh", "interceptorroutes"),
-                            ("serving.kserve.io", "inferenceservices")]:
+                            ("serving.kserve.io", "inferenceservices"), ("batch", "jobs")]:
         assert (group, resource, "create") in operator and (group, resource, "delete") in operator, resource
     assert ("", "secrets", "get") in operator
     assert ("", "pods/exec", "create") not in operator
     # The namespaced cache also lists watched kinds in the control namespace.
     leader = grants(find(docs, "Role", "kionga-leader"))
-    for resource in ("kiongaapplications", "kiongafunctions", "kiongamodeldeployments", "ingresses", "scaledobjects", "httpscaledobjects"):
+    # The live lane found the operator crash-looping on a Job watch it could not list.
+    for resource in ("kiongaapplications", "kiongafunctions", "kiongamodeldeployments", "ingresses", "scaledobjects", "httpscaledobjects", "jobs"):
         assert any(r == resource and v == "list" for _, r, v in leader), resource
     assert not any(d["kind"] in ("ClusterRole", "ClusterRoleBinding") for d in docs)
 
@@ -254,19 +260,30 @@ def test_gateway_manages_the_new_resources_and_reads_logs_and_events(tmp_path):
     assert not any(resource == "pods/exec" for _, resource, _ in gateway)
 
 
-def test_source_builds_get_their_own_privileged_but_fenced_namespace(tmp_path):
+def test_source_builds_relax_pod_security_only_when_enabled_and_are_fenced(tmp_path):
+    plain = find(render_chart(tmp_path, **ON), "Namespace", "kionga-workloads")["metadata"]["labels"]
+    assert plain["pod-security.kubernetes.io/enforce"] == "restricted"
     docs = render_chart(tmp_path, **with_apps(registry={"url": "r.example.com/apps", "pushSecretName": "push"}))
-    namespace = find(docs, "Namespace", "kionga-builds")["metadata"]["labels"]
-    assert namespace["pod-security.kubernetes.io/enforce"] == "privileged"
-    assert find(docs, "Namespace", "kionga-workloads")["metadata"]["labels"]["pod-security.kubernetes.io/enforce"] == "restricted"
-    policy = find(docs, "NetworkPolicy", "kionga-builds", "kionga-builds")["spec"]
+    labels = find(docs, "Namespace", "kionga-workloads")["metadata"]["labels"]
+    # Rootless BuildKit needs unconfined seccomp and AppArmor: neither baseline nor restricted allows it.
+    assert labels["pod-security.kubernetes.io/enforce"] == "privileged"
+    assert labels["pod-security.kubernetes.io/warn"] == labels["pod-security.kubernetes.io/audit"] == "restricted"
+    policy = find(docs, "NetworkPolicy", "kionga-builds", "kionga-workloads")["spec"]
+    assert policy["podSelector"]["matchLabels"] == {"app.kubernetes.io/managed-by": "kionga-operator", "app.kubernetes.io/component": "build"}
     assert "ingress" not in policy and policy["policyTypes"] == ["Ingress", "Egress"]
     public = policy["egress"][1]["to"][0]["ipBlock"]
     assert public["cidr"] == "0.0.0.0/0" and {"10.0.0.0/8", "169.254.0.0/16"} <= set(public["except"])
-    builds = grants(find(docs, "Role", "kionga-operator-builds", "kionga-builds"))
-    assert ("batch", "jobs", "create") in builds and ("", "pods/log", "get") in builds
-    assert not any(resource == "secrets" for _, resource, _ in builds)
-    assert not any(d["kind"] == "Namespace" and d["metadata"]["name"] == "kionga-builds" for d in render_chart(tmp_path, **ON))
+    assert not any(d["kind"] == "Namespace" and d["metadata"]["name"] == "kionga-builds" for d in docs)
+    assert ("batch", "jobs", "create") in grants(find(docs, "Role", "kionga-operator", "kionga-workloads"))
+
+
+def test_kubeflow_is_gone(tmp_path):
+    docs = render_chart(tmp_path, **ON)
+    rendered = "\n".join(yaml.safe_dump(d) for d in docs)
+    assert "kiongapipelineruns" not in rendered and "KFP_URL" not in rendered
+    assert "KFP_URL" not in (ROOT / "config/deploy/operator.yaml").read_text()
+    assert "kiongapipelineruns.kionga.dev" not in source_crds()
+    assert {"kiongatools.kionga.dev", "kiongaconnections.kionga.dev", "kiongamodelpromotions.kionga.dev"} <= source_crds().keys()
 
 
 # NetworkPolicies ------------------------------------------------------------------
