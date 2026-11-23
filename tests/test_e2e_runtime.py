@@ -182,3 +182,19 @@ def test_cli_rejects_unknown_steps(tmp_path):
     with pytest.raises(SystemExit):
         e2e.main(["--context", "c", "--base-domain", "d", "--gateway-url", "g", "--agent-image", "a", "--local-password-file", str(password),
                   "--steps", "application,teleport"])
+
+
+def test_workflow_builds_from_source_and_never_pushes_to_a_public_registry():
+    workflow = (ROOT / ".github/workflows/kubernetes-e2e.yml").read_text()
+    setup = (ROOT / "scripts/kind-ci-up.sh").read_text()
+    assert "docker login" not in workflow + setup and "ghcr.io" not in workflow
+    assert "REGISTRY=localhost:5001" in setup
+    pushes = [line for line in setup.splitlines() if line.strip().startswith("docker push")]
+    assert pushes and all("\"$REGISTRY/" in line for line in pushes)
+    refs = dict(line.split("=", 1) for line in (ROOT / "kind/ci/refs.env").read_text().splitlines() if line and not line.startswith("#"))
+    assert refs == {"PLATFORM_REF": "main", "AGENT_RUNTIME_REF": "main", "SDK_PYTHON_REF": "main", "TRACE_PROXY_REF": "main"}
+    parsed = yaml.safe_load(workflow)
+    inputs = parsed[True]["workflow_dispatch"]["inputs"]
+    assert {"platform_ref", "agent_runtime_ref", "sdk_python_ref", "trace_proxy_ref", "steps"} <= set(inputs)
+    assert parsed["permissions"] == {"contents": "read"}
+    assert set(e2e.STEPS) == set(inputs["steps"]["default"].split(","))

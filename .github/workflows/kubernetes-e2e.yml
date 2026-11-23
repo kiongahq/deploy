@@ -5,9 +5,12 @@ name: Kubernetes e2e
 # scripts/e2e-runtime.py (application, pod recovery, scale-up, function scale to
 # zero and wake, agent, model prediction, pipeline through the Jobs executor).
 # Images go to a registry on the runner only; nothing is pushed anywhere else.
-# Manual for now: it needs the operator controllers and the applications API in
-# kiongahq/platform, so select their branch through platform_ref until they merge.
+# It needs the operator controllers and the applications API in kiongahq/platform:
+# until they merge, dispatch it with platform_ref set to their branch. On a pull
+# request it runs when the kubernetes-e2e label is added (refs from kind/ci/refs.env).
 on:
+  pull_request:
+    types: [labeled, synchronize]
   workflow_dispatch:
     inputs:
       platform_ref:
@@ -35,6 +38,7 @@ concurrency:
 
 jobs:
   e2e:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'kubernetes-e2e')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -51,11 +55,16 @@ jobs:
           df -h /
       - name: Check out the components at the selected refs
         env:
-          PLATFORM_REF: ${{ inputs.platform_ref }}
-          AGENT_RUNTIME_REF: ${{ inputs.agent_runtime_ref }}
-          SDK_PYTHON_REF: ${{ inputs.sdk_python_ref }}
-          TRACE_PROXY_REF: ${{ inputs.trace_proxy_ref }}
+          INPUT_PLATFORM_REF: ${{ inputs.platform_ref }}
+          INPUT_AGENT_RUNTIME_REF: ${{ inputs.agent_runtime_ref }}
+          INPUT_SDK_PYTHON_REF: ${{ inputs.sdk_python_ref }}
+          INPUT_TRACE_PROXY_REF: ${{ inputs.trace_proxy_ref }}
         run: |
+          source kind/ci/refs.env
+          PLATFORM_REF="${INPUT_PLATFORM_REF:-$PLATFORM_REF}"
+          AGENT_RUNTIME_REF="${INPUT_AGENT_RUNTIME_REF:-$AGENT_RUNTIME_REF}"
+          SDK_PYTHON_REF="${INPUT_SDK_PYTHON_REF:-$SDK_PYTHON_REF}"
+          TRACE_PROXY_REF="${INPUT_TRACE_PROXY_REF:-$TRACE_PROXY_REF}"
           fetch() {
             git init -q "$KIONGA_SRC/$1"
             git -C "$KIONGA_SRC/$1" fetch -q --depth=1 "https://github.com/kiongahq/$1.git" "$2"
@@ -77,7 +86,7 @@ jobs:
         run: bash scripts/kind-ci-up.sh
       - name: Run the e2e steps
         env:
-          STEPS: ${{ inputs.steps }}
+          STEPS: ${{ inputs.steps || 'application,recovery,scale-up,function,agent,model,pipeline' }}
         run: |
           set -a; source "$OUT/images.env"; set +a
           python3 scripts/e2e-runtime.py --context kind-kionga-e2e --namespace kionga-workloads \
