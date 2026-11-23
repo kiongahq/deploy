@@ -44,6 +44,16 @@ spec:
             matchLabels: {kionga.dev/release: {{ .Release.Name }}, app.kubernetes.io/component: sandbox-manager}
       ports: [{port: 8088}]
     {{- end }}
+    {{- if and .Values.keda.enabled (or .Values.applications.enabled .Values.functions.enabled) }}
+    # Invoking a function that scaled to zero goes through the KEDA HTTP
+    # interceptor, which holds the request while the function wakes.
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.keda.namespace }}}
+          podSelector:
+            matchLabels: {{ toYaml .Values.keda.interceptor.podLabels | nindent 14 }}
+      ports: [{port: {{ .Values.keda.interceptor.port }}}]
+    {{- end }}
     {{- with .Values.networkPolicy.externalEgress }}
 {{ toYaml . | indent 4 }}
     {{- end }}

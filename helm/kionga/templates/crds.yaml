@@ -1,0 +1,21 @@
+{{- /*
+Kionga's CustomResourceDefinitions. config/crd is the source; files/crds links
+to it so `kubectl apply -f config/crd` and the chart install the same bytes.
+They render as templates (not the chart's crds/ directory) so upgrades update
+the schemas, and keep their objects when the release is uninstalled.
+*/ -}}
+{{- if .Values.crds.install }}
+{{- range $path, $_ := .Files.Glob "files/crds/*.yaml" }}
+{{- range $doc := regexSplit "(?m)^---\\s*$" ($.Files.Get $path) -1 }}
+{{- $crd := fromYaml $doc }}
+{{- if $crd }}
+{{- if ne $crd.kind "CustomResourceDefinition" }}{{ fail (printf "%s holds a %s; files/crds may hold only CustomResourceDefinitions" $path $crd.kind) }}{{ end }}
+{{- $metadata := $crd.metadata }}
+{{- $_ := set $metadata "annotations" (merge (dict "helm.sh/resource-policy" "keep") (default (dict) $metadata.annotations)) }}
+{{- $_ := set $metadata "labels" (merge (dict "app.kubernetes.io/part-of" "kionga" "app.kubernetes.io/managed-by" $.Release.Service) (default (dict) $metadata.labels)) }}
+---
+{{ toYaml $crd }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -224,3 +224,132 @@ externalSecrets:
 pipelineExecutor:
   kubernetes: false
   namespace: kionga-pipelines
+
+# Kionga's own CustomResourceDefinitions (config/crd), rendered from
+# files/crds. They carry helm.sh/resource-policy: keep, so uninstalling the
+# release never deletes them or the resources users created. Set false when you
+# apply config/crd yourself; the preflight then requires them to exist. CRDs
+# applied earlier with kubectl must be adopted once before the first install
+# with this on (see README, "Kubernetes CRDs").
+crds:
+  install: true
+
+# Refuse to install when a cluster prerequisite is missing. On a live
+# install or upgrade the chart reads the cluster's API groups and names the
+# first missing CRD. `helm template` cannot see a cluster, so it skips the
+# check unless enforceOffline is true; then the API groups come from
+# --api-versions (as Argo CD passes them).
+preflight:
+  enabled: true
+  enforceOffline: false
+
+# Applications: user software services reachable at <name>.<baseDomain>, each a
+# KiongaApplication that the operator turns into a Deployment, Service, Ingress,
+# PodDisruptionBudget and KEDA scaling objects in workspaceNamespace. Needs
+# keda.enabled and cert-manager when tls.clusterIssuer is set. Install the
+# prerequisites with helm/prerequisites/install.sh.
+applications:
+  enabled: false
+  # DNS zone for applications, e.g. apps.example.com: billing.apps.example.com.
+  # Point a wildcard DNS record at your ingress controller. It must differ from
+  # ingress.host and workspaceIngress.baseDomain.
+  baseDomain: ""
+  tls:
+    # A cert-manager ClusterIssuer that can solve DNS-01 for *.<baseDomain>
+    # (HTTP-01 cannot issue wildcards). The chart then creates the wildcard
+    # Certificate in the release and workload namespaces. Leave empty to supply
+    # your own kubernetes.io/tls Secret named secretName in both namespaces.
+    clusterIssuer: ""
+    secretName: kionga-applications-tls
+  # Annotations on the per-application Ingresses the operator creates.
+  ingressAnnotations: {}
+  # A wildcard Ingress for *.<baseDomain> that sends hosts without an
+  # application to the gateway, which answers "not found" or "starting". Give it
+  # the lowest priority your controller supports so it never shadows an
+  # application, e.g. traefik.ingress.kubernetes.io/router.priority: "1".
+  fallbackIngress:
+    enabled: true
+    annotations: {}
+  # Source builds (spec.source). Empty url disables them; image deployments still work.
+  registry:
+    # Repository prefix the build pushes to, e.g. registry.example.com/kionga-apps.
+    url: ""
+    # kubernetes.io/dockerconfigjson Secret in workspaceNamespace with push access.
+    # The operator also lists it as an image pull secret for built images.
+    pushSecretName: ""
+    # Plain-HTTP registry, for a cluster-local registry only.
+    insecure: false
+  build:
+    # Builds run here, not in workspaceNamespace: rootless BuildKit needs an
+    # unconfined seccomp profile, which the restricted Pod Security level of the
+    # workload namespace refuses. The chart labels this namespace privileged,
+    # denies all ingress, and allows egress only to DNS, public HTTPS/HTTP (git
+    # and registries) and extraEgress. Create registry.pushSecretName here too.
+    namespace: kionga-builds
+    # Egress rules for a registry or git server on a private network.
+    extraEgress: []
+    # Rootless BuildKit, pinned by digest.
+    image: moby/buildkit:v0.34.1-rootless@sha256:f68752a5a94acfcdad2d07867b7075601a421638e17fc5f28efc1c814d0c4f89
+    timeoutSeconds: 1800
+    resources:
+      requests: {cpu: 500m, memory: 1Gi}
+      limits: {cpu: "2", memory: 4Gi}
+  # Egress rules (NetworkPolicy egress entries) for application and function
+  # pods beyond DNS and the Kionga services. Empty: they reach nothing else.
+  extraEgress: []
+
+# Functions on Kubernetes are Kionga-native (no OpenFaaS): KiongaFunction
+# objects that scale to zero on requests through the KEDA HTTP add-on and are
+# invoked through the gateway. Needs keda.enabled.
+functions:
+  enabled: false
+  # Seconds without requests before a function scales to zero.
+  scaleDownSeconds: 300
+  defaultMaxReplicas: 10
+
+# KEDA core and the KEDA HTTP add-on: request-based scaling and scale to zero
+# for applications, functions and agents. CPU autoscaling stays the fallback.
+keda:
+  enabled: false
+  namespace: keda
+  interceptor:
+    # The HTTP add-on's proxy Service in keda.namespace and its port.
+    service: keda-add-ons-http-interceptor-proxy
+    port: 8080
+    # Labels on the interceptor pods, allowed through application NetworkPolicies.
+    podLabels: {app.kubernetes.io/component: interceptor, app.kubernetes.io/name: http-add-on}
+
+# KServe in raw (Standard) mode for model endpoints (KiongaModelDeployment).
+kserve:
+  enabled: false
+  # Standard is KServe's current name for RawDeployment; both mean no Knative.
+  deploymentMode: Standard
+  # Secret in workspaceNamespace with the object store credentials model servers
+  # read artifacts with (keys AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). Use a
+  # read-only identity.
+  storageSecretName: kionga-model-storage
+  # Egress rules for predictor pods to reach the object store, e.g.
+  # [{to: [{ipBlock: {cidr: 10.0.40.0/24}}], ports: [{port: 443}]}].
+  storageEgress: []
+
+# Public marketing site the console links to. Empty: no link.
+website:
+  url: ""
+
+# Managed operations: lets the Kionga operations team operate this install in
+# your cluster. Off by default. Creates a ServiceAccount plus Roles in every
+# Kionga namespace and a small read-only ClusterRole, all labelled
+# kionga.dev/access=operations so `kubectl get rolebindings,clusterrolebindings
+# -A -l kionga.dev/access=operations` lists every grant. Read access to Kionga
+# objects, logs and events; restart and roll out Kionga Deployments. No Secret
+# access unless allowSecretRead, and never exec or port-forward.
+operations:
+  access:
+    enabled: false
+    # Identities from your identity provider, as RBAC subjects, e.g.
+    # [{kind: Group, name: kionga-operations}, {kind: User, name: ops@kionga.dev}].
+    subjects: []
+    serviceAccount:
+      create: true
+      name: kionga-operations
+    allowSecretRead: false

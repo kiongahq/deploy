@@ -1,0 +1,52 @@
+{{- /*
+Cluster preflight. Fails `helm install` or `helm upgrade` with the name of the
+first missing prerequisite instead of leaving objects the operator cannot
+reconcile. A live install is detected by looking up kube-system: `helm
+template` and client dry runs get an empty lookup and skip the check, unless
+preflight.enforceOffline is set, in which case the API groups come from
+--api-versions (Argo CD passes the cluster's).
+*/ -}}
+{{- $p := .Values.preflight }}
+{{- $live := not (empty (lookup "v1" "Namespace" "" "kube-system")) }}
+{{- if and $p.enabled (or $live $p.enforceOffline) }}
+{{- $install := "Install the prerequisites with helm/prerequisites/install.sh (see helm/prerequisites/README.md), or turn the feature off." }}
+{{- $required := list }}
+{{- if not .Values.crds.install }}
+{{- range $kind := list "KiongaAgent" "KiongaWorkspace" "KiongaPipelineRun" "KiongaModelPromotion" "KiongaTool" "KiongaConnection" "KiongaApplication" "KiongaFunction" "KiongaModelDeployment" }}
+{{- $required = append $required (list (printf "kionga.dev/v1alpha1/%s" $kind) "crds.install=false" "apply config/crd first (kubectl apply -f config/crd)") }}
+{{- end }}
+{{- end }}
+{{- if .Values.keda.enabled }}
+{{- $required = append $required (list "keda.sh/v1alpha1/ScaledObject" "keda.enabled" "KEDA core is not installed") }}
+{{- $required = append $required (list "http.keda.sh/v1alpha1/HTTPScaledObject" "keda.enabled" "the KEDA HTTP add-on is not installed") }}
+{{- end }}
+{{- if .Values.kserve.enabled }}
+{{- $required = append $required (list "serving.kserve.io/v1beta1/InferenceService" "kserve.enabled" "KServe is not installed") }}
+{{- end }}
+{{- if and .Values.applications.enabled .Values.applications.tls.clusterIssuer }}
+{{- $required = append $required (list "cert-manager.io/v1/Certificate" "applications.tls.clusterIssuer" "cert-manager is not installed") }}
+{{- end }}
+{{- if .Values.externalSecrets.enabled }}
+{{- $required = append $required (list "external-secrets.io/v1/ExternalSecret" "externalSecrets.enabled" "External Secrets Operator is not installed") }}
+{{- end }}
+{{- if .Values.monitoring.enabled }}
+{{- $required = append $required (list "monitoring.coreos.com/v1/ServiceMonitor" "monitoring.enabled" "the Prometheus Operator CRDs are not installed") }}
+{{- end }}
+{{- range $item := $required }}
+{{- if not ($.Capabilities.APIVersions.Has (index $item 0)) }}
+{{- fail (printf "preflight: %s needs %s, which this cluster does not serve: %s. %s" (index $item 1) (index $item 0) (index $item 2) $install) }}
+{{- end }}
+{{- end }}
+{{- if and $live .Values.applications.enabled .Values.applications.tls.clusterIssuer }}
+{{- if empty (lookup "cert-manager.io/v1" "ClusterIssuer" "" .Values.applications.tls.clusterIssuer) }}
+{{- fail (printf "preflight: applications.tls.clusterIssuer names ClusterIssuer %s, which does not exist. Create a DNS-01 ClusterIssuer for *.%s first." .Values.applications.tls.clusterIssuer .Values.applications.baseDomain) }}
+{{- end }}
+{{- end }}
+{{- if and $live .Values.applications.enabled (not .Values.applications.tls.clusterIssuer) }}
+{{- range $namespace := list .Release.Namespace .Values.workspaceNamespace }}
+{{- if and (not (empty (lookup "v1" "Namespace" "" $namespace))) (empty (lookup "v1" "Secret" $namespace $.Values.applications.tls.secretName)) }}
+{{- fail (printf "preflight: applications.tls.secretName %s is missing in namespace %s. Create the wildcard kubernetes.io/tls Secret for *.%s there, or set applications.tls.clusterIssuer." $.Values.applications.tls.secretName $namespace $.Values.applications.baseDomain) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

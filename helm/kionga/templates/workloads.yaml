@@ -73,6 +73,9 @@ spec:
             - {name: KIONGA_WORKSPACE_NAMESPACE, value: {{ $.Values.workspaceNamespace | quote }}}
             - {name: WORKSPACE_STORAGE_CLASS, value: {{ $.Values.storageClass | quote }}}
             - {name: KIONGA_URL, value: "http://{{ $.Release.Name }}-gateway.{{ $.Release.Namespace }}.svc:8080"}
+            {{- if has $name (list "gateway" "operator") }}
+            {{- include "kionga.runtimeEnv" $ | nindent 12 }}
+            {{- end }}
             {{- if and (eq $name "gateway") $.Values.pipelineExecutor.kubernetes }}
             - {name: KIONGA_EXECUTOR, value: kubernetes}
             - {name: KIONGA_K8S_NAMESPACE, value: {{ $.Values.pipelineExecutor.namespace | quote }}}

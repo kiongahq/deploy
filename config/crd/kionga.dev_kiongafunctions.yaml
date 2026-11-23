@@ -1,0 +1,155 @@
+# A request-driven function. Same reconciliation as KiongaApplication, but it
+# scales to zero on requests by default and has no public host unless
+# visibility asks for one. The gateway invokes it at /api/v1/functions/<name>/invoke.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kiongafunctions.kionga.dev
+spec:
+  group: kionga.dev
+  scope: Namespaced
+  names:
+    plural: kiongafunctions
+    singular: kiongafunction
+    kind: KiongaFunction
+    shortNames: [kfn]
+    categories: [kionga]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - {name: Phase, type: string, jsonPath: .status.phase}
+        - {name: URL, type: string, jsonPath: .status.url}
+        - {name: Ready, type: integer, jsonPath: .status.readyReplicas}
+        - {name: Min, type: integer, jsonPath: .spec.replicas.min, priority: 1}
+        - {name: Max, type: integer, jsonPath: .spec.replicas.max, priority: 1}
+        - {name: Scaling, type: string, jsonPath: .spec.scaling.metric, priority: 1}
+        - {name: Age, type: date, jsonPath: .metadata.creationTimestamp}
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          x-kubernetes-validations:
+            # The name becomes the first label of the public host name.
+            - rule: self.metadata.name.matches('^[a-z]([-a-z0-9]*[a-z0-9])?$') && size(self.metadata.name) <= 63
+              message: the name must be a DNS label (lowercase letters, digits and '-', at most 63 characters) because it becomes a host name
+          properties:
+            spec:
+              type: object
+              x-kubernetes-validations:
+                - rule: has(self.image) != has(self.source)
+                  message: set exactly one of image or source
+                - rule: "!(has(self.scaling) && self.scaling.metric == 'cpu' && self.replicas.min == 0)"
+                  message: cpu scaling cannot scale to zero; use replicas.min >= 1 or scaling.metric requests
+              properties:
+                image: {type: string, minLength: 1, maxLength: 512}
+                source:
+                  type: object
+                  required: [git]
+                  properties:
+                    git:
+                      type: string
+                      maxLength: 2048
+                      pattern: '^https://[^@\s]+$'
+                      description: HTTPS clone URL without credentials; a private repository uses source.secretRef.
+                    ref: {type: string, maxLength: 255, description: Branch, tag or commit; the default branch when empty.}
+                    contextDir: {type: string, maxLength: 1024, pattern: '^[^/].*$|^$'}
+                    dockerfile: {type: string, maxLength: 1024, default: Dockerfile}
+                    secretRef:
+                      type: object
+                      required: [name]
+                      description: A Secret in the same namespace with keys username and password (or token) for cloning.
+                      properties:
+                        name: {type: string, pattern: '^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$', maxLength: 253}
+                port: {type: integer, minimum: 1, maximum: 65535, default: 8080}
+                env:
+                  type: array
+                  maxItems: 100
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: {type: string, pattern: '^[A-Za-z_][A-Za-z0-9_]*$', maxLength: 253}
+                      value: {type: string, maxLength: 32768}
+                secretRefs:
+                  type: array
+                  maxItems: 20
+                  description: Secrets in the application's namespace exposed to the container as environment variables.
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: {type: string, pattern: '^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$', maxLength: 253}
+                resources:
+                  type: object
+                  properties:
+                    requests:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-int-or-string: true
+                        anyOf: [{type: integer}, {type: string}]
+                    limits:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-int-or-string: true
+                        anyOf: [{type: integer}, {type: string}]
+                replicas:
+                  type: object
+                  default: {min: 0, max: 10}
+                  required: [min, max]
+                  x-kubernetes-validations:
+                    - rule: self.max >= self.min
+                      message: max replicas must be greater than or equal to min replicas
+                  properties:
+                    min: {type: integer, minimum: 0, maximum: 100}
+                    max: {type: integer, minimum: 1, maximum: 100}
+                scaling:
+                  type: object
+                  required: [metric]
+                  description: requests scales on in-flight HTTP requests through KEDA and allows scale to zero; cpu is the HorizontalPodAutoscaler fallback.
+                  properties:
+                    metric: {type: string, enum: [requests, cpu]}
+                    target: {type: integer, minimum: 1, maximum: 100000, description: In-flight requests per replica, or average CPU percent.}
+                healthPath: {type: string, pattern: '^/', maxLength: 1024}
+                visibility: {type: string, enum: [private, public, sso], default: private}
+            status:
+              type: object
+              properties:
+                phase: {type: string}
+                url: {type: string}
+                image: {type: string, description: The image the Deployment runs, after a source build.}
+                replicas: {type: integer}
+                readyReplicas: {type: integer}
+                observedGeneration: {type: integer, format: int64}
+                lastBuild:
+                  type: object
+                  properties:
+                    name: {type: string}
+                    phase: {type: string}
+                    image: {type: string}
+                    ref: {type: string}
+                    commit: {type: string}
+                    startedAt: {type: string, format: date-time}
+                    finishedAt: {type: string, format: date-time}
+                    message: {type: string}
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status]
+                    properties:
+                      type: {type: string}
+                      status: {type: string, enum: ["True", "False", Unknown]}
+                      reason: {type: string}
+                      message: {type: string}
+                      observedGeneration: {type: integer, format: int64}
+                      lastTransitionTime: {type: string, format: date-time}

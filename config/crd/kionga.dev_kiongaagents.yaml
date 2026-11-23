@@ -26,6 +26,10 @@ spec:
         - name: Ready
           type: integer
           jsonPath: .status.readyReplicas
+        - name: Scaling
+          type: string
+          jsonPath: .spec.scaling.metric
+          priority: 1
       schema:
         openAPIV3Schema:
           type: object
@@ -50,6 +54,13 @@ spec:
                   properties:
                     min: {type: integer, minimum: 1, maximum: 100}
                     max: {type: integer, minimum: 1, maximum: 100}
+                scaling:
+                  type: object
+                  required: [metric]
+                  description: requests (the operator's default when KEDA is installed) scales on in-flight HTTP requests; cpu is the HorizontalPodAutoscaler fallback.
+                  properties:
+                    metric: {type: string, enum: [requests, cpu]}
+                    target: {type: integer, minimum: 1, maximum: 100000, description: In-flight requests per replica, or average CPU percent.}
                 llm:
                   type: object
                   properties:

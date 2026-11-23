@@ -1,0 +1,119 @@
+# A registered model version served on Kubernetes. The operator resolves the
+# version's artifact location through the MLflow API to an object store URI,
+# binds object store credentials through a ServiceAccount and creates a KServe
+# InferenceService in raw (Standard) mode. KServe raw mode has no canary, so a
+# canary is a second InferenceService and Kionga splits traffic by its weight.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kiongamodeldeployments.kionga.dev
+spec:
+  group: kionga.dev
+  scope: Namespaced
+  names:
+    plural: kiongamodeldeployments
+    singular: kiongamodeldeployment
+    kind: KiongaModelDeployment
+    shortNames: [kmd]
+    categories: [kionga]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - {name: Model, type: string, jsonPath: .spec.modelName}
+        - {name: Version, type: string, jsonPath: .spec.version}
+        - {name: Phase, type: string, jsonPath: .status.phase}
+        - {name: URL, type: string, jsonPath: .status.url}
+        - {name: Canary, type: integer, jsonPath: .spec.canary.weight, priority: 1}
+        - {name: Age, type: date, jsonPath: .metadata.creationTimestamp}
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          x-kubernetes-validations:
+            - rule: self.metadata.name.matches('^[a-z]([-a-z0-9]*[a-z0-9])?$') && size(self.metadata.name) <= 45
+              message: the name must be a DNS label of at most 45 characters; KServe appends suffixes such as -predictor and -canary
+          properties:
+            spec:
+              type: object
+              required: [modelName, version, modelFormat]
+              x-kubernetes-validations:
+                - rule: "!has(self.canary) || self.canary.version != self.version"
+                  message: the canary must serve a different version
+              properties:
+                modelName: {type: string, minLength: 1, maxLength: 256, description: Registered model name in MLflow.}
+                version: {type: string, minLength: 1, maxLength: 64, description: Registered model version.}
+                modelFormat:
+                  type: object
+                  required: [name]
+                  properties:
+                    name: {type: string, minLength: 1, maxLength: 64, description: KServe model format, for example sklearn, xgboost, lightgbm or mlflow.}
+                    version: {type: string, maxLength: 64}
+                runtime: {type: string, maxLength: 253, description: A ServingRuntime or ClusterServingRuntime name; KServe picks one for the format when empty.}
+                storageUri:
+                  type: string
+                  maxLength: 2048
+                  pattern: '^(s3|gs|https|pvc|oci)://'
+                  description: Overrides the location resolved from MLflow. Leave empty in normal use.
+                replicas:
+                  type: object
+                  default: {min: 1, max: 1}
+                  required: [min, max]
+                  x-kubernetes-validations:
+                    - rule: self.max >= self.min
+                      message: max replicas must be greater than or equal to min replicas
+                  properties:
+                    min: {type: integer, minimum: 0, maximum: 100}
+                    max: {type: integer, minimum: 1, maximum: 100}
+                resources:
+                  type: object
+                  properties:
+                    requests:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-int-or-string: true
+                        anyOf: [{type: integer}, {type: string}]
+                    limits:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-int-or-string: true
+                        anyOf: [{type: integer}, {type: string}]
+                canary:
+                  type: object
+                  required: [version, weight]
+                  properties:
+                    version: {type: string, minLength: 1, maxLength: 64}
+                    weight: {type: integer, minimum: 0, maximum: 100, description: Percent of requests the canary receives.}
+            status:
+              type: object
+              properties:
+                phase: {type: string}
+                url: {type: string}
+                storageUri: {type: string}
+                inferenceServiceRef: {type: string}
+                readyReplicas: {type: integer}
+                observedGeneration: {type: integer, format: int64}
+                canary:
+                  type: object
+                  properties:
+                    url: {type: string}
+                    storageUri: {type: string}
+                    inferenceServiceRef: {type: string}
+                    weight: {type: integer}
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status]
+                    properties:
+                      type: {type: string}
+                      status: {type: string, enum: ["True", "False", Unknown]}
+                      reason: {type: string}
+                      message: {type: string}
+                      observedGeneration: {type: integer, format: int64}
+                      lastTransitionTime: {type: string, format: date-time}

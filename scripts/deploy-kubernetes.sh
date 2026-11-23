@@ -19,10 +19,14 @@ command -v helm >/dev/null
 command -v kubectl >/dev/null
 helm lint "$root/helm/kionga" "${values_args[@]}" --namespace "$namespace" --strict
 kubectl --context "$context" get namespace "$namespace" >/dev/null
-for crd in kiongaagents kiongaworkspaces kiongapipelineruns kiongamodelpromotions kiongatools kiongaconnections; do
-  kubectl --context "$context" get crd "$crd.kionga.dev" >/dev/null
-done
 rendered="$(helm template kionga "$root/helm/kionga" --namespace "$namespace" "${values_args[@]}")"
+# The chart installs Kionga's CRDs unless crds.install=false; then they must exist.
+if [[ "$rendered" != *'kind: CustomResourceDefinition'* ]]; then
+  for crd in kiongaagents kiongaworkspaces kiongapipelineruns kiongamodelpromotions kiongatools kiongaconnections \
+    kiongaapplications kiongafunctions kiongamodeldeployments; do
+    kubectl --context "$context" get crd "$crd.kionga.dev" >/dev/null
+  done
+fi
 if [[ "$rendered" == *'kind: ExternalSecret'* ]]; then
   kubectl --context "$context" get crd externalsecrets.external-secrets.io >/dev/null
 fi
