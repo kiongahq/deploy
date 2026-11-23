@@ -101,16 +101,18 @@ def test_application_and_function_schemas_follow_the_design(plural):
     assert fields["replicas"]["properties"]["min"]["minimum"] == 0
     assert fields["visibility"]["enum"] == ["public", "sso", "internal"]
     assert "has(self.image) != has(self.source)" in " ".join(r["rule"] for r in spec["x-kubernetes-validations"])
-    assert {"url", "internalURL", "readyReplicas", "lastBuild", "conditions"} <= schema_of(plural)["status"]["properties"].keys()
+    assert {"url", "internalURL", "host", "message", "readyReplicas", "lastBuild", "conditions"} <= schema_of(plural)["status"]["properties"].keys()
+    assert "restartedAt" in fields, "redeploy writes spec.restartedAt"
 
 
 def test_model_deployment_schema_and_agent_scaling():
     model = schema_of("kiongamodeldeployments")
     assert set(model["spec"]["required"]) == {"modelName", "version"}
     assert model["spec"]["properties"]["modelFormat"]["type"] == "string"
-    weight = model["spec"]["properties"]["canary"]["properties"]["weight"]
+    assert model["spec"]["properties"]["canaryVersion"]["type"] == "string"
+    weight = model["spec"]["properties"]["canaryWeight"]
     assert (weight["minimum"], weight["maximum"]) == (0, 100)
-    assert {"url", "storageURI", "inferenceServiceRef", "canaryURL", "canaryWeight", "conditions"} <= model["status"]["properties"].keys()
+    assert {"url", "storageURI", "inferenceServiceRef", "canaryURL", "canaryWeight", "message", "conditions"} <= model["status"]["properties"].keys()
     agent = schema_of("kiongaagents")["spec"]["properties"]
     assert agent["scaling"]["properties"]["metric"]["enum"] == ["requests", "cpu"]
     assert "default" not in agent["scaling"]["properties"]["metric"], "the operator picks requests when KEDA is present"
@@ -261,8 +263,11 @@ def test_gateway_manages_the_new_resources_and_reads_logs_and_events(tmp_path):
 
 
 def test_source_builds_relax_pod_security_only_when_enabled_and_are_fenced(tmp_path):
-    plain = find(render_chart(tmp_path, **ON), "Namespace", "kionga-workloads")["metadata"]["labels"]
+    plain = find(render_chart(tmp_path), "Namespace", "kionga-workloads")["metadata"]["labels"]
     assert plain["pod-security.kubernetes.io/enforce"] == "restricted"
+    # The live lane: KServe predictor pods set no seccomp profile and restricted refused them.
+    models = find(render_chart(tmp_path, **ON), "Namespace", "kionga-workloads")["metadata"]["labels"]
+    assert models["pod-security.kubernetes.io/enforce"] == "baseline" and models["pod-security.kubernetes.io/warn"] == "restricted"
     docs = render_chart(tmp_path, **with_apps(registry={"url": "r.example.com/apps", "pushSecretName": "push"}))
     labels = find(docs, "Namespace", "kionga-workloads")["metadata"]["labels"]
     # Rootless BuildKit needs unconfined seccomp and AppArmor: neither baseline nor restricted allows it.

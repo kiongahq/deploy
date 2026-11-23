@@ -55,24 +55,18 @@ spec:
               KiongaModelDeploymentSpec serves an MLflow registered model version with
               KServe in RawDeployment mode.
             properties:
-              canary:
-                description: ModelCanarySpec serves a second registered version next
-                  to the stable one.
-                properties:
-                  version:
-                    minLength: 1
-                    type: string
-                  weight:
-                    description: Weight is the percent of requests the gateway sends
-                      to the canary.
-                    format: int32
-                    maximum: 100
-                    minimum: 0
-                    type: integer
-                required:
-                - version
-                - weight
-                type: object
+              canaryVersion:
+                description: |-
+                  CanaryVersion serves a second registered version next to the stable
+                  one. Empty means no canary.
+                type: string
+              canaryWeight:
+                description: CanaryWeight is the percent of requests the gateway sends
+                  to the canary.
+                format: int32
+                maximum: 100
+                minimum: 0
+                type: integer
               modelFormat:
                 description: ModelFormat is the KServe model format. Default mlflow.
                 type: string
@@ -246,6 +240,9 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               inferenceServiceRef:
+                type: string
+              message:
+                description: Message repeats the Ready condition message.
                 type: string
               observedGeneration:
                 format: int64

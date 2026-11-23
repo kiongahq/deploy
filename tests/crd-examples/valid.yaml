@@ -29,7 +29,8 @@ spec:
   modelName: churn
   version: "3"
   modelFormat: sklearn
-  canary: {version: "4", weight: 10}
+  canaryVersion: "4"
+  canaryWeight: 10
 ---
 apiVersion: kionga.dev/v1alpha1
 kind: KiongaAgent

@@ -148,7 +148,7 @@ def test_manifests_are_valid_against_the_crd_schemas():
         assert set(manifest["spec"]) <= set(schema["properties"]), manifest["kind"]
         assert manifest["spec"]["scaling"]["metric"] in schema["properties"]["scaling"]["properties"]["metric"]["enum"]
     assert e2e.function_manifest(settings)["spec"]["replicas"]["min"] == 0
-    assert "@sha256:" in e2e.WHOAMI and "@sha256:" in e2e.BUSYBOX
+    assert "@sha256:" in e2e.WEB_IMAGE and "@sha256:" in e2e.BUSYBOX
 
 
 class FakeRunner:

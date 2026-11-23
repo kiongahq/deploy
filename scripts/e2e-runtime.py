@@ -39,7 +39,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, Optional
 
-WHOAMI = "traefik/whoami:v1.11.0@sha256:200689790a0a0ea48ca45992e0450bc26ccab5307375b41c84dfc4f2475937ab"
+# Runs as a numeric non-root user (101) and serves HTTP on 8080: the operator
+# runs workloads with runAsNonRoot, which refuses images whose user is root.
+WEB_IMAGE = "nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0"
 BUSYBOX = "busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
 IRIS_SAMPLE = [[5.1, 3.5, 1.4, 0.2], [6.7, 3.0, 5.2, 2.3]]
 PIPELINE_SUCCESS = {"succeeded", "success", "completed"}
@@ -292,15 +294,15 @@ class Settings:
 
 def application_manifest(s: Settings) -> dict:
     return {"apiVersion": "kionga.dev/v1alpha1", "kind": "KiongaApplication", "metadata": {"name": s.app, "namespace": s.namespace},
-            "spec": {"image": WHOAMI, "port": 8080, "env": [{"name": "WHOAMI_PORT_NUMBER", "value": "8080"}],
-                     "replicas": {"min": 1, "max": 4}, "scaling": {"metric": "requests", "target": 5}, "healthPath": "/health",
+            "spec": {"image": WEB_IMAGE, "port": 8080,
+                     "replicas": {"min": 1, "max": 4}, "scaling": {"metric": "requests", "target": 5}, "healthPath": "/",
                      "visibility": "public", "resources": {"requests": {"cpu": "20m", "memory": "16Mi"}, "limits": {"cpu": "200m", "memory": "64Mi"}}}}
 
 
 def function_manifest(s: Settings) -> dict:
     return {"apiVersion": "kionga.dev/v1alpha1", "kind": "KiongaFunction", "metadata": {"name": s.function, "namespace": s.namespace},
-            "spec": {"image": WHOAMI, "port": 8080, "env": [{"name": "WHOAMI_PORT_NUMBER", "value": "8080"}],
-                     "replicas": {"min": 0, "max": 2}, "scaling": {"metric": "requests", "target": 10}, "healthPath": "/health"}}
+            "spec": {"image": WEB_IMAGE, "port": 8080,
+                     "replicas": {"min": 0, "max": 2}, "scaling": {"metric": "requests", "target": 10}, "healthPath": "/"}}
 
 
 class Runner:
@@ -322,7 +324,7 @@ class Runner:
             raise StepFailed(f"status.url {status_url!r} is not https://{self.s.app}.{self.s.base_domain}")
         code, body = poll(lambda: (lambda r: r if r[0] == 200 else None)(self.http.request("GET", self.app_url())), 180,
                           what=f"HTTP 200 from {self.app_url()}")
-        if "Hostname" not in body:
+        if "nginx" not in body:
             raise StepFailed("the host answered 200 but not from the application")
         return f"{self.app_url()} answered {code}"
 
@@ -346,7 +348,7 @@ class Runner:
 
     def step_scale_up(self) -> str:
         before, _ = replicas(self.app_deployment())
-        url = self.app_url() + "?wait=300ms"
+        url = self.app_url()
         peak = {"replicas": before}
 
         def request() -> str:
@@ -453,7 +455,7 @@ class Runner:
         project = api("POST", "/api/v1/projects", {"name": f"e2e-{int(time.time())}", "description": "kind e2e", "template": "blank"})
         project_id = project.get("id") or project.get("project", {}).get("id")
         definition = api("POST", "/api/v1/pipelines/definitions", {
-            "project_id": project_id, "name": "e2e-jobs", "version": "1", "execution_mode": "container",
+            "project_id": project_id, "name": "e2e-jobs", "version": "1", "execution_mode": "prefect",
             "jobs": [{"name": "hello", "kind": "container", "image": BUSYBOX, "command": ["sh", "-c", "echo kionga-e2e-ok"],
                       "resources": {"cpu": "100m", "memory": "64Mi"}, "retries": 0, "timeout_seconds": 300}]})
         run = api("POST", "/api/v1/pipelines/submit", {"project_id": project_id, "name": "e2e-jobs", "definition_id": definition.get("id")})

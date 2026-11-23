@@ -164,6 +164,11 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              restartedAt:
+                description: |-
+                  RestartedAt is set (RFC 3339) by a redeploy. A new value rolls the pods
+                  and, for a source workload, builds the source again.
+                type: string
               scaling:
                 description: |-
                   ScalingSpec selects the autoscaling signal. An empty metric lets the
@@ -301,6 +306,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              host:
+                description: |-
+                  Host is the Host header that routes a call through the KEDA HTTP
+                  interceptor to this workload. Empty when the workload scales on CPU.
+                type: string
               image:
                 description: Image is the image the Deployment runs.
                 type: string
@@ -335,6 +345,9 @@ spec:
                     format: date-time
                     type: string
                 type: object
+              message:
+                description: Message repeats the Ready condition message.
+                type: string
               observedGeneration:
                 format: int64
                 type: integer

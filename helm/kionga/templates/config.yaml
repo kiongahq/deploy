@@ -38,6 +38,13 @@ metadata:
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
+    {{- else if .Values.kserve.enabled }}
+    # KServe's predictor and storage-initializer containers set no seccomp
+    # profile, which restricted refuses; baseline admits them. restricted is
+    # still warned and audited.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
     {{- else }}
     pod-security.kubernetes.io/enforce: restricted
     {{- end }}

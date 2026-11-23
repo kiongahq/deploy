@@ -51,7 +51,7 @@ Caddy stays the only public listener.
 network policies, edge and monitoring templates, Kionga's CRDs
 (`templates/crds.yaml` renders `files/crds`, a link to `config/crd`), applications
 and functions (`templates/applications.yaml`: wildcard certificate, fallback
-Ingress, build namespace, NetworkPolicies), the cluster preflight
+Ingress, build egress, NetworkPolicies), the cluster preflight
 (`templates/preflight.yaml`) and opt-in managed operations access
 (`templates/operations-access.yaml`). `helm/prerequisites` installs cert-manager,
 KEDA, the KEDA HTTP add-on and KServe at pinned versions. `production.example.yaml`,
