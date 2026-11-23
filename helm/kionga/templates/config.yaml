@@ -30,7 +30,24 @@ metadata:
   annotations:
     helm.sh/resource-policy: keep
   labels:
+    {{- if and .Values.applications.enabled .Values.applications.registry.url }}
+    # Rootless BuildKit build Jobs need unconfined seccomp and AppArmor, which
+    # every stricter Pod Security level refuses. Violations of restricted are
+    # still warned and audited, and the operator sets restricted-compatible
+    # security contexts on every other pod it creates.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    {{- else if .Values.kserve.enabled }}
+    # KServe's predictor and storage-initializer containers set no seccomp
+    # profile, which restricted refuses; baseline admits them. restricted is
+    # still warned and audited.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    {{- else }}
     pod-security.kubernetes.io/enforce: restricted
+    {{- end }}
     pod-security.kubernetes.io/enforce-version: latest
 ---
 apiVersion: v1

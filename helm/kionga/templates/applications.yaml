@@ -1,0 +1,190 @@
+{{- /*
+Applications, functions and model endpoints on Kubernetes. The operator owns
+every per-workload object (Deployment, Service, Ingress, PodDisruptionBudget,
+KEDA objects, InferenceService). This file owns what is shared by all of them:
+the wildcard certificate, the fallback wildcard Ingress and the NetworkPolicies. Pod selection relies on the operator's labels:
+kionga.dev/component=application|function on application and function pods,
+kionga.dev/agent on agent pods, and KServe's serving.kserve.io/inferenceservice
+on predictor pods.
+*/ -}}
+{{- $apps := .Values.applications }}
+{{- $dns := "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$" }}
+{{- $digest := "^.+@sha256:[a-f0-9]{64}$" }}
+{{- if $apps.enabled }}
+{{- if not (regexMatch $dns (toString $apps.baseDomain)) }}{{ fail "applications.baseDomain must be a DNS name such as apps.example.com" }}{{ end }}
+{{- if not .Values.ingress.className }}{{ fail "applications need ingress.className: the operator creates Ingresses of that class" }}{{ end }}
+{{- if not .Values.keda.enabled }}{{ fail "applications need keda.enabled: request scaling and scale to zero use KEDA and its HTTP add-on" }}{{ end }}
+{{- if not $apps.tls.secretName }}{{ fail "applications.tls.secretName is required" }}{{ end }}
+{{- range $other := list .Values.ingress.host .Values.workspaceIngress.baseDomain }}
+{{- if $other }}
+{{- if or (eq $other $apps.baseDomain) (hasSuffix (printf ".%s" $apps.baseDomain) $other) }}{{ fail (printf "applications.baseDomain must not contain %s: an application could take that host name" $other) }}{{ end }}
+{{- end }}
+{{- end }}
+{{- if and $apps.registry.url (not $apps.registry.pushSecretName) }}{{ fail "applications.registry.pushSecretName is required with applications.registry.url" }}{{ end }}
+{{- if not (regexMatch $digest (toString $apps.build.image)) }}{{ fail "applications.build.image must be an immutable repository@sha256:digest" }}{{ end }}
+{{- end }}
+{{- if and .Values.functions.enabled (not .Values.keda.enabled) }}{{ fail "functions need keda.enabled: they scale to zero through the KEDA HTTP add-on" }}{{ end }}
+{{- if and .Values.kserve.enabled (not (has .Values.kserve.deploymentMode (list "Standard" "RawDeployment"))) }}{{ fail "kserve.deploymentMode must be Standard or RawDeployment: Kionga does not use Knative" }}{{ end }}
+{{- if and .Values.website.url (not (regexMatch "^https://[^\\s@/]+(/.*)?$" (toString .Values.website.url))) }}{{ fail "website.url must be an https:// URL" }}{{ end }}
+{{- if and $apps.enabled $apps.tls.clusterIssuer }}
+{{- range $namespace := list .Release.Namespace .Values.workspaceNamespace }}
+---
+# Wildcard certificate for *.{{ $apps.baseDomain }}. Wildcards need a DNS-01 solver.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $.Release.Name }}-applications-wildcard
+  namespace: {{ $namespace }}
+  labels: {app.kubernetes.io/part-of: kionga, kionga.dev/release: {{ $.Release.Name }}}
+spec:
+  secretName: {{ $apps.tls.secretName }}
+  dnsNames: [{{ printf "*.%s" $apps.baseDomain | quote }}]
+  issuerRef: {group: cert-manager.io, kind: ClusterIssuer, name: {{ $apps.tls.clusterIssuer }}}
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+{{- end }}
+{{- end }}
+{{- if and $apps.enabled $apps.fallbackIngress.enabled }}
+---
+# Hosts with no application land on the gateway, which says "not found" or
+# "starting" instead of the controller's default backend. The operator's
+# per-application Ingresses name exact hosts, which take precedence.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-applications
+  labels: {app.kubernetes.io/part-of: kionga, kionga.dev/release: {{ .Release.Name }}}
+  annotations: {{ toYaml $apps.fallbackIngress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ printf "*.%s" $apps.baseDomain | quote }}]
+      secretName: {{ $apps.tls.secretName }}
+  rules:
+    - host: {{ printf "*.%s" $apps.baseDomain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-gateway
+                port: {number: 8080}
+{{- end }}
+{{- if and $apps.enabled $apps.registry.url .Values.networkPolicy.enabled }}
+---
+# Source builds run as rootless BuildKit Jobs in workspaceNamespace (see
+# templates/config.yaml for its Pod Security labels). They may reach DNS,
+# public HTTPS/HTTP (git hosts and registries) and applications.build.extraEgress,
+# never private ranges or the cloud metadata address, and accept no traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-builds
+  namespace: {{ .Values.workspaceNamespace }}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/managed-by: kionga-operator, app.kubernetes.io/component: build}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports: [{port: 443}, {port: 80}]
+    {{- with $apps.build.extraEgress }}
+{{ toYaml . | indent 4 }}
+    {{- end }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+{{- if or $apps.enabled .Values.functions.enabled }}
+---
+# Application and function pods accept traffic only from the ingress
+# controller, the KEDA HTTP interceptor and the gateway (function invoke).
+# The workload isolation policy still applies to their egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-applications
+  namespace: {{ .Values.workspaceNamespace }}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: kionga.dev/component, operator: In, values: [application, function]}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.ingress.controllerNamespace }}}
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.keda.namespace }}}
+          podSelector:
+            matchLabels: {{ toYaml .Values.keda.interceptor.podLabels | nindent 14 }}
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Release.Namespace }}}
+          podSelector:
+            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: gateway}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    {{- with $apps.extraEgress }}
+{{ toYaml . | indent 4 }}
+    {{- end }}
+{{- end }}
+{{- if .Values.kserve.enabled }}
+---
+# Model servers accept requests from the gateway and from agent pods in the same
+# namespace (llm.inferenceServiceRef), nothing else, and reach the object store
+# through kserve.storageEgress to load their artifacts.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-model-serving
+  namespace: {{ .Values.workspaceNamespace }}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: serving.kserve.io/inferenceservice, operator: Exists}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Release.Namespace }}}
+          podSelector:
+            matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: gateway}
+        - podSelector:
+            matchExpressions:
+              - {key: kionga.dev/agent, operator: Exists}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    {{- with .Values.kserve.storageEgress }}
+{{ toYaml . | indent 4 }}
+    {{- end }}
+---
+# The workload isolation policy limits agent egress to DNS and the platform
+# services; this adds the model servers agents call (llm.inferenceServiceRef).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-agents-to-models
+  namespace: {{ .Values.workspaceNamespace }}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: kionga.dev/agent, operator: Exists}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - {key: serving.kserve.io/inferenceservice, operator: Exists}
+{{- end }}
+{{- end }}

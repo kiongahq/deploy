@@ -1,0 +1,5 @@
+# Weight above 100.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaModelDeployment
+metadata: {name: heavy, namespace: default}
+spec: {modelName: m, version: "1", modelFormat: sklearn, canaryVersion: "2", canaryWeight: 150}

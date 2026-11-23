@@ -1,0 +1,200 @@
+# Test-only dependencies for the kind e2e lane, applied after the prerequisites
+# and before the chart: a private CA (cert-manager), PostgreSQL with TLS,
+# an S3 object store and MLflow in kionga-data. Credentials come from Secrets
+# scripts/kind-ci-up.sh generates per run. Never use these outside the lane.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kionga-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kionga-data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kionga-pipelines
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: kionga-e2e-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kionga-e2e-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: kionga-e2e-ca
+  secretName: kionga-e2e-ca
+  duration: 24h
+  privateKey: {algorithm: ECDSA, size: 256}
+  issuerRef: {kind: ClusterIssuer, name: kionga-e2e-selfsigned, group: cert-manager.io}
+---
+# Stands in for a DNS-01 issuer: a CA issuer signs any name, wildcards included.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: kionga-e2e-ca
+spec:
+  ca: {secretName: kionga-e2e-ca}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kionga-tls
+  namespace: kionga-system
+spec:
+  secretName: kionga-tls
+  dnsNames: [kionga.127.0.0.1.sslip.io]
+  issuerRef: {kind: ClusterIssuer, name: kionga-e2e-ca, group: cert-manager.io}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: postgres-tls
+  namespace: kionga-data
+spec:
+  secretName: postgres-tls
+  dnsNames: [postgres.kionga-data.svc, postgres.kionga-data.svc.cluster.local]
+  issuerRef: {kind: ClusterIssuer, name: kionga-e2e-ca, group: cert-manager.io}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: kionga-data
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres}
+    spec:
+      securityContext: {fsGroup: 999}
+      containers:
+        - name: postgres
+          image: postgres:16.10@sha256:21f6013073bc6b92830a2129570e2f5ec42a6c734b5a985a41e83aa58f54c3c1
+          args: [-c, ssl=on, -c, ssl_cert_file=/tls/tls.crt, -c, ssl_key_file=/tls/tls.key]
+          env:
+            - {name: POSTGRES_USER, value: kionga}
+            - {name: POSTGRES_DB, value: kionga}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: postgres, key: password}}
+          ports: [{containerPort: 5432}]
+          readinessProbe:
+            exec: {command: [pg_isready, -U, kionga, -d, kionga]}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: data, mountPath: /var/lib/postgresql/data}
+      volumes:
+        - name: tls
+          secret: {secretName: postgres-tls, defaultMode: 0640}
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kionga-data
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: objectstore
+  namespace: kionga-data
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: objectstore}
+  template:
+    metadata:
+      labels: {app: objectstore}
+    spec:
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+          env:
+            - {name: RUSTFS_VOLUMES, value: /data}
+            - {name: RUSTFS_ADDRESS, value: "0.0.0.0:9000"}
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: objectstore, key: access-key}}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: objectstore, key: secret-key}}
+          ports: [{containerPort: 9000}]
+          readinessProbe:
+            httpGet: {path: /health, port: 9000}
+            periodSeconds: 5
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: objectstore
+  namespace: kionga-data
+spec:
+  selector: {app: objectstore}
+  ports: [{port: 9000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: kionga-data
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mlflow}
+  template:
+    metadata:
+      labels: {app: mlflow}
+    spec:
+      containers:
+        - name: mlflow
+          image: MLFLOW_IMAGE
+          command: [mlflow, server, --host=0.0.0.0, --port=5000, --backend-store-uri=sqlite:////data/mlflow.db,
+                    --default-artifact-root=s3://kionga-models/mlflow, --no-serve-artifacts]
+          env:
+            - {name: MLFLOW_S3_ENDPOINT_URL, value: "http://objectstore.kionga-data.svc:9000"}
+            # DNS-rebinding protection: the in-cluster names only.
+            - {name: MLFLOW_SERVER_ALLOWED_HOSTS, value: "mlflow,mlflow:5000,mlflow.kionga-data.svc,mlflow.kionga-data.svc:5000,localhost,localhost:*,127.0.0.1:*"}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: objectstore, key: access-key}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: objectstore, key: secret-key}}
+          ports: [{containerPort: 5000}]
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+            periodSeconds: 5
+            failureThreshold: 60
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: kionga-data
+spec:
+  selector: {app: mlflow}
+  ports: [{port: 5000}]

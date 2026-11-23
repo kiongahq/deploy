@@ -1,0 +1,5 @@
+# A git ref cannot contain spaces.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaFunction
+metadata: {name: badref, namespace: default}
+spec: {source: {git: "https://github.com/x/y.git", ref: "main; rm"}}

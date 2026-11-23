@@ -1,0 +1,45 @@
+# Creates the model bucket, trains a small scikit-learn classifier and registers
+# it in MLflow as e2e-iris version 1. Uses the MLflow image (scikit-learn and
+# boto3 included). Applied by scripts/kind-ci-up.sh.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: register-model
+  namespace: kionga-data
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: register
+          image: MLFLOW_IMAGE
+          env:
+            - {name: MLFLOW_TRACKING_URI, value: "http://mlflow.kionga-data.svc:5000"}
+            - {name: MLFLOW_S3_ENDPOINT_URL, value: "http://objectstore.kionga-data.svc:9000"}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: objectstore, key: access-key}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: objectstore, key: secret-key}}
+          command:
+            - python
+            - -c
+            - |
+              import os
+              import boto3, mlflow, mlflow.sklearn
+              from botocore.exceptions import ClientError
+              from sklearn.datasets import load_iris
+              from sklearn.linear_model import LogisticRegression
+              s3 = boto3.client("s3", endpoint_url=os.environ["MLFLOW_S3_ENDPOINT_URL"])
+              try:
+                  s3.create_bucket(Bucket="kionga-models")
+              except ClientError as error:
+                  if error.response["Error"]["Code"] not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+                      raise
+              X, y = load_iris(return_X_y=True)
+              model = LogisticRegression(max_iter=500).fit(X, y)
+              with mlflow.start_run():
+                  info = mlflow.sklearn.log_model(model, name="model", registered_model_name="e2e-iris",
+                                                  serialization_format="pickle")
+              print("registered", info.model_uri, "accuracy", model.score(X, y))

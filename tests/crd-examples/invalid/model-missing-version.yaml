@@ -1,0 +1,5 @@
+# version is required.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaModelDeployment
+metadata: {name: noversion, namespace: default}
+spec: {modelName: m}

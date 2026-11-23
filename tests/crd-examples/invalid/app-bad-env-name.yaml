@@ -1,0 +1,5 @@
+# Environment variable names must be identifiers.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: badenv, namespace: default}
+spec: {image: nginx, env: [{name: "1-BAD", value: x}]}

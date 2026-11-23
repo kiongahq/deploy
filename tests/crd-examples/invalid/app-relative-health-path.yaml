@@ -1,0 +1,5 @@
+# healthPath must start with a slash.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: health, namespace: default}
+spec: {image: nginx, healthPath: healthz}

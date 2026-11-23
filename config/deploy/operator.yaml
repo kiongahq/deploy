@@ -19,7 +19,6 @@ spec:
           env:
             - {name: ENVIRONMENT, value: production}
             - {name: TRACE_PROXY_IMAGE, value: "ghcr.io/kiongahq/trace-proxy:latest"}
-            - {name: KFP_URL, value: "http://ml-pipeline.kubeflow:8888"}
             - {name: MLFLOW_URL, value: "http://mlflow.kionga-system:5000"}
             - {name: KIONGA_URL, value: "http://kionga-gateway.kionga-system:8080"}
             - {name: WORKBENCH_IMAGE, value: "ghcr.io/kiongahq/jupyter:latest"}

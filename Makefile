@@ -1,7 +1,8 @@
 # Run Kionga: the local stack from sibling checkouts, a single VM, or Kubernetes.
 .PHONY: workspace workspace-pull test local local-up local-start local-build-up local-rebuild local-down local-status local-logs \
         ide-up ide-agents-up ide-down langflow-up langflow-down public-up public-down kind-up k8s-tools test-e2e-kind \
-        test-load test-stress smoke sandbox-runtime-install sandbox-runtime-verify
+        test-load test-stress smoke sandbox-runtime-install sandbox-runtime-verify \
+        k8s-prerequisites support-bundle test-e2e-runtime
 
 COMPOSE := bash scripts/container.sh compose -f compose.yaml
 
@@ -78,6 +79,12 @@ kind-up:
 
 test-e2e-kind:
 	bash scripts/e2e-kind.sh
+
+k8s-prerequisites:         ## cert-manager, KEDA, KEDA HTTP add-on, KServe (CONTEXT=kube-context, pinned in helm/prerequisites/versions.env)
+	bash helm/prerequisites/install.sh $(if $(CONTEXT),--kube-context $(CONTEXT))
+
+support-bundle:            ## redacted diagnostics tarball from a Kubernetes install (CONTEXT=kube-context)
+	python3 scripts/support-bundle.py $(if $(CONTEXT),--context $(CONTEXT))
 
 test-load:
 	k6 run tests/load/gateway.js

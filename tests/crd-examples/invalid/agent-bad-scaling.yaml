@@ -1,0 +1,5 @@
+# Unknown scaling metric.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaAgent
+metadata: {name: badscale, namespace: default}
+spec: {version: "1", image: x, graphModule: m, replicas: {min: 1, max: 2}, scaling: {metric: memory}}

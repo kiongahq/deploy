@@ -1,0 +1,5 @@
+# Scaling targets cannot be negative.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: negative, namespace: default}
+spec: {image: nginx, scaling: {metric: requests, target: -1}}

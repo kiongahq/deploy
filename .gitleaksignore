@@ -1,0 +1,8 @@
+# Fake credential shapes in the support bundle redaction test (commit 47dcfb8);
+# none is a real credential, and the test now assembles them at run time.
+# A hex placeholder for KIONGA_INTERNAL_TOKEN.
+47dcfb82c2cdabac2fff9fa49feea8e045f6ef5a:tests/test_support_bundle.py:generic-api-key:28
+# A JWT whose payload is {"sub":"mark"} and whose signature is the text "signature-value".
+47dcfb82c2cdabac2fff9fa49feea8e045f6ef5a:tests/test_support_bundle.py:jwt:32
+# An sk-proj- prefix followed by the alphabet.
+47dcfb82c2cdabac2fff9fa49feea8e045f6ef5a:tests/test_support_bundle.py:generic-api-key:37

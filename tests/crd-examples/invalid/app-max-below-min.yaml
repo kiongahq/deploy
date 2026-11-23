@@ -1,0 +1,5 @@
+# max below min.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: maxmin, namespace: default}
+spec: {image: nginx, replicas: {min: 3, max: 2}}

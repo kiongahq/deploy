@@ -20,8 +20,6 @@ spec:
       containers:
         - name: gateway
           image: ghcr.io/kiongahq/gateway:latest
-          envFrom:
-            - secretRef: {name: kionga-openfaas, optional: true}
           env:
             - {name: PORT, value: "8080"}
             - name: DATABASE_URL
