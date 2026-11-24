@@ -103,6 +103,9 @@ def test_application_and_function_schemas_follow_the_design(plural):
     assert "has(self.image) != has(self.source)" in " ".join(r["rule"] for r in spec["x-kubernetes-validations"])
     assert {"url", "internalURL", "host", "message", "readyReplicas", "lastBuild", "conditions"} <= schema_of(plural)["status"]["properties"].keys()
     assert "restartedAt" in fields, "redeploy writes spec.restartedAt"
+    user = fields["runAsUser"]
+    assert (user["type"], user["minimum"], user["maximum"]) == ("integer", 1, 2147483647), "a numeric user, never root"
+    assert "runAsUser" not in spec.get("required", []), "the image's own user stays the default"
 
 
 def test_model_deployment_schema_and_agent_scaling():

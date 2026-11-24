@@ -1,0 +1,5 @@
+# Workloads never run as root: runAsUser starts at 1.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaFunction
+metadata: {name: asroot, namespace: default}
+spec: {image: nginx, runAsUser: 0}

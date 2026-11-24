@@ -22,6 +22,21 @@ spec:
   image: ghcr.io/example/resize:1
   visibility: internal
 ---
+# An image that runs as root needs a numeric non-root user.
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaApplication
+metadata: {name: legacy, namespace: default}
+spec:
+  image: ghcr.io/example/legacy:1
+  runAsUser: 1000
+---
+apiVersion: kionga.dev/v1alpha1
+kind: KiongaFunction
+metadata: {name: thumbnail, namespace: default}
+spec:
+  image: ghcr.io/example/thumbnail:1
+  runAsUser: 65534
+---
 apiVersion: kionga.dev/v1alpha1
 kind: KiongaModelDeployment
 metadata: {name: churn, namespace: default}
