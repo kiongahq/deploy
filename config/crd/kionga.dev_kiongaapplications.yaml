@@ -169,6 +169,17 @@ spec:
                   RestartedAt is set (RFC 3339) by a redeploy. A new value rolls the pods
                   and, for a source workload, builds the source again.
                 type: string
+              runAsUser:
+                description: |-
+                  RunAsUser is the numeric user the containers run as. Set it when the
+                  image runs as root or names its user instead of numbering it: pods
+                  always run with runAsNonRoot, so the kubelet refuses to start such an
+                  image unless it is given a non-root user id. Root (0) is not accepted.
+                  Empty keeps the image's own user.
+                format: int64
+                maximum: 2147483647
+                minimum: 1
+                type: integer
               scaling:
                 description: |-
                   ScalingSpec selects the autoscaling signal. An empty metric lets the
