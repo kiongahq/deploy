@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.1](https://github.com/kiongahq/deploy/compare/v0.2.0...v0.2.1) (2026-11-24)
+
+
+### Features
+
+* applications, Kionga-native functions and model endpoints on Kubernetes ([#61](https://github.com/kiongahq/deploy/issues/61)) ([f5815a2](https://github.com/kiongahq/deploy/commit/f5815a260f8ac08e8cd8ded687eb4ef4962f0b00))
+* **crd:** runAsUser on applications and functions ([ed8a37f](https://github.com/kiongahq/deploy/commit/ed8a37ff570a3d000ba72c936b1626767dfcb58a))
+* **deploy:** give the gateway the MLflow address for model input examples ([51e5d10](https://github.com/kiongahq/deploy/commit/51e5d10f814bbbc3bde8a753c7d6edaec9bc35d3))
+
+
+### Documentation
+
+* list self-hosted among the agent model backends ([5be57c2](https://github.com/kiongahq/deploy/commit/5be57c22c6084ad06e675df8235c6510abc65b4a))
+
+
+### Maintenance
+
+* **deploy:** remove the Kubeflow Pipelines credential name ([f1892f2](https://github.com/kiongahq/deploy/commit/f1892f2e891b342f79ba42b150da4075ffcb20b1))
+
 ## [0.2.0](https://github.com/kiongahq/deploy/compare/v0.1.0...v0.2.0) (2026-11-12)
 
 
