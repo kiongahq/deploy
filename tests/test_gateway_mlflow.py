@@ -148,10 +148,11 @@ def test_manifest_gateway_uses_the_operators_mlflow_url():
     assert not set(OBJECT_STORE_NAMES) & set(gateway)
 
 
-def test_manifest_gateway_may_reach_mlflow_in_its_namespace_only():
+def test_manifest_gateway_may_reach_only_the_mlflow_pods_on_that_port():
     address = urlparse(env(load("config/deploy/platform-services.yaml"), "kionga-gateway")["MLFLOW_URL"]["value"])
     assert address.hostname == "mlflow.kionga-system"
     policy = find(load("config/network/platform-allow.yaml"), "NetworkPolicy", "allow-gateway-required-egress")
     assert policy["metadata"]["namespace"] == "kionga-system"
     rules = [rule for rule in policy["spec"]["egress"] if {"protocol": "TCP", "port": address.port} in rule.get("ports", [])]
-    assert rules == [{"to": [{"podSelector": {}}], "ports": [{"protocol": "TCP", "port": address.port}]}]
+    # Not every pod in the namespace, and no other namespace.
+    assert rules == [{"to": [{"podSelector": {"matchLabels": {"app": "mlflow"}}}], "ports": [{"protocol": "TCP", "port": address.port}]}]

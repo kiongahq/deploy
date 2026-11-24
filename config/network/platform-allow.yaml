@@ -14,9 +14,11 @@ spec:
         - {protocol: TCP, port: 5432}
         - {protocol: TCP, port: 8082}
         - {protocol: TCP, port: 443}
-    # MLflow (MLFLOW_URL), in this namespace: model input examples.
+    # MLflow (MLFLOW_URL), in this namespace: model input examples. Label the
+    # MLflow pods app: mlflow, or change this selector to their label.
     - to:
-        - podSelector: {}
+        - podSelector:
+            matchLabels: {app: mlflow}
       ports:
         - {protocol: TCP, port: 5000}
     - to:
