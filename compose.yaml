@@ -289,8 +289,8 @@ services:
       PREFECT_API_URL: http://prefect-server:4200/api
       SERVING_MANAGER_URL: http://serving-manager:8085
       # Read-only: the model Test dialog's input example comes from the model's
-      # MLmodel file, through the MLflow server's own artifact route. The gateway
-      # holds no object store credentials and does not wait for MLflow.
+      # MLmodel file, through the MLflow server's own artifact route, so this
+      # needs no model bucket credentials. The gateway does not wait for MLflow.
       MLFLOW_URL: http://mlflow:5000
       LANGFUSE_URL: http://langfuse:3000
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}

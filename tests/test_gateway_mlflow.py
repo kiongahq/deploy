@@ -1,7 +1,8 @@
 """The gateway reads a model's saved input example and signature from MLflow for
 the console's Test dialog. It needs the MLflow server's address, the token as a
 secret when MLflow requires one, and a network path to MLflow. It uses the
-server's own artifact route, so it never receives object store credentials."""
+server's own artifact route, so it is given no way to read the model buckets
+itself: none of the settings an MLflow or S3 client reads."""
 
 import json
 from urllib.parse import urlparse
@@ -49,8 +50,16 @@ def test_compose_gateway_points_at_the_mlflow_service(services):
     assert services["serving-manager"]["environment"]["MLFLOW_TRACKING_URI"] == services["gateway"]["environment"]["MLFLOW_URL"]
 
 
-def test_compose_gateway_gets_no_object_store_credentials(services):
-    assert not set(OBJECT_STORE_NAMES) & set(services["gateway"]["environment"])
+def test_compose_gateway_gets_no_model_bucket_access(services):
+    environment = services["gateway"]["environment"]
+    assert not set(OBJECT_STORE_NAMES) & set(environment)
+    # The one object store setting the Compose gateway has is the engineering
+    # blog's media bucket, under its own names. Nothing else may carry the
+    # store's keys, and that bucket is not where models live.
+    keyed = {name for name, value in environment.items() if "OBJECTSTORE_" in str(value)}
+    assert keyed == {"KIONGA_BLOG_MEDIA_S3_ACCESS_KEY", "KIONGA_BLOG_MEDIA_S3_SECRET_KEY"}
+    assert environment["KIONGA_BLOG_MEDIA_BUCKET"] == "kionga-blog-media"
+    assert "MLFLOW_TRACKING_URI" not in environment, "the gateway is not an MLflow client library user"
 
 
 def test_compose_gateway_does_not_wait_for_mlflow(services):
