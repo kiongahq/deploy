@@ -77,4 +77,4 @@ for target in \
   "${KUBECTL[@]}" -n kionga-system patch deployment "$deployment" --type=strategic \
     -p '{"spec":{"template":{"spec":{"containers":[{"name":"'"$container"'","imagePullPolicy":"IfNotPresent"}]}}}}'
 done
-echo "Core platform applied. Install KFP, KServe, MLflow and Langfuse using your pinned environment values."
+echo "Core platform applied. Install KServe, MLflow and Langfuse using your pinned environment values."

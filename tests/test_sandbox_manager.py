@@ -11,7 +11,7 @@ import subprocess
 import pytest
 import yaml
 
-from test_production_deploy import ROOT, render_chart
+from test_production_deploy import ROOT, render_chart, vm
 from test_public_preflight import run_preflight
 from test_sso import PUBLIC_ENV, compose_config
 
@@ -480,7 +480,7 @@ def references(**overrides):
 
 
 @pytest.mark.parametrize("name", ["KIONGA_FEATURE_SECRET_F", "KIONGA_STORAGE_SECRET_S", "KIONGA_PLATFORM_SECRET_P", "FEAST_TOKEN",
-                                  "LAKE_CREDENTIALS", "OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN"])
+                                  "LAKE_CREDENTIALS", "OPENFAAS_PASSWORD", "MLFLOW_TOKEN"])
 def test_chart_delivers_every_scope(tmp_path, name):
     env = {item["name"]: item for item in gateway_env(render_chart(tmp_path, secretReferences=references(names=[name])))}
     assert env[name]["valueFrom"] == {"secretKeyRef": {"name": "refs", "key": name}}
@@ -493,10 +493,23 @@ def test_chart_passes_every_allowlist(tmp_path, field, variable):
     assert env[variable]["value"] == "OLD_NAME"
 
 
-@pytest.mark.parametrize("name", ["OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN"])
+@pytest.mark.parametrize("name", ["OPENFAAS_PASSWORD", "MLFLOW_TOKEN"])
 def test_chart_never_allowlists_a_by_type_gateway_secret(tmp_path, name):
     with pytest.raises(AssertionError, match=f"cannot name {name}"):
         render_chart(tmp_path, secretReferences=references(platformAllowlist=[name]))
+
+
+def test_chart_refuses_a_kubeflow_pipelines_credential_name(tmp_path):
+    # KFP_TOKEN is no longer an exempt name, so it needs a scope prefix like any other.
+    with pytest.raises(AssertionError, match="needs a scope prefix"):
+        render_chart(tmp_path, secretReferences=references(names=["KFP_TOKEN"]))
+
+
+def test_no_deployment_file_knows_a_kubeflow_pipelines_credential():
+    # The Kubeflow Pipelines path is gone from the platform; nothing here may name it.
+    for path in ("helm/kionga/values.yaml", "helm/kionga/templates/workloads.yaml", "vm/up.py", "config/deploy/operator.yaml"):
+        assert "KFP" not in (ROOT / path).read_text(), path
+    assert "KFP_TOKEN" not in vm.REFERENCE_EXEMPT and "KFP_TOKEN" not in vm.GATEWAY_OWN_SECRETS
 
 
 def test_chart_reads_references_from_the_secret_for_the_gateway_only(tmp_path):

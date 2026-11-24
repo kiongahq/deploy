@@ -188,7 +188,7 @@ agentTeams:
 # one key per name below; the gateway reads each through secretKeyRef.
 # names: KIONGA_{KB,CONNECTION,FEATURE,STORAGE,PLATFORM}_SECRET_*, KIONGA_QDRANT_KEY,
 # KIONGA_KNOWLEDGE_DSN, KIONGA_AGENT_API_TOKEN, FEAST_TOKEN, LAKE_CREDENTIALS,
-# OPENFAAS_PASSWORD, MLFLOW_TOKEN, KFP_TOKEN, or a name in an allowlist.
+# OPENFAAS_PASSWORD, MLFLOW_TOKEN, or a name in an allowlist.
 # The allowlists keep a stored reference under another name.
 secretReferences:
   secretName: kionga-secret-references

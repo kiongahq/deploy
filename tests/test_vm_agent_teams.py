@@ -407,7 +407,7 @@ def test_allowlists_become_the_gateway_settings(tmp_path):
 
 def test_every_scope_reaches_the_gateway_as_a_file(tmp_path):
     names = ["KIONGA_FEATURE_SECRET_F", "KIONGA_STORAGE_SECRET_S", "KIONGA_PLATFORM_SECRET_P",
-             "FEAST_TOKEN", "LAKE_CREDENTIALS", "OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN"]
+             "FEAST_TOKEN", "LAKE_CREDENTIALS", "OPENFAAS_PASSWORD", "MLFLOW_TOKEN"]
     path = with_references(tmp_path, {"files": names}, write=names)
     vm.deployment_environment(path)
     gateway = rendered(path)["services"]["gateway"]["environment"]

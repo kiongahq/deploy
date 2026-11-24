@@ -39,12 +39,12 @@ REFERENCE_PREFIXES = ("KIONGA_KB_SECRET_", "KIONGA_CONNECTION_SECRET_", "KIONGA_
 REFERENCE_NAMES = ("KIONGA_QDRANT_KEY", "KIONGA_KNOWLEDGE_DSN", "KIONGA_AGENT_API_TOKEN", "FEAST_TOKEN", "LAKE_CREDENTIALS")
 # Gateway secrets that a platform connection of the matching type may use. They can
 # be delivered as files, but never allowlisted.
-REFERENCE_EXEMPT = ("OPENFAAS_PASSWORD", "MLFLOW_TOKEN", "KFP_TOKEN")
+REFERENCE_EXEMPT = ("OPENFAAS_PASSWORD", "MLFLOW_TOKEN")
 # Mirrors runtimeconfig.SecretNames in platform; the gateway refuses these too. A test
 # compares the two when platform is checked out beside this repository.
 GATEWAY_OWN_SECRETS = ("DATABASE_URL", "OIDC_CLIENT_SECRET", "KIONGA_INTERNAL_TOKEN", "KIONGA_CREDENTIAL_KEY",
                        "S3_ACCESS_KEY", "S3_SECRET_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "REDIS_URL",
-                       "KAFKA_REST_TOKEN", "KFP_TOKEN", "MLFLOW_TOKEN", "OPENFAAS_PASSWORD", "LANGFUSE_SECRET_KEY",
+                       "KAFKA_REST_TOKEN", "MLFLOW_TOKEN", "OPENFAAS_PASSWORD", "LANGFUSE_SECRET_KEY",
                        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LLM_UPSTREAM_API_KEY", "KIONGA_JUPYTER_TOKEN",
                        "KIONGA_IDE_PASSWORD", "TRACE_SINK_TOKEN", "KIONGA_LOCAL_PASSWORD",
                        "KIONGA_AGENT_DESIGNER_RUNNER_TOKEN", "KIONGA_DESIGNER_RUNNER_TOKEN", "KIONGA_SANDBOX_TOKEN")
