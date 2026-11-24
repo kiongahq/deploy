@@ -32,6 +32,11 @@ config:
   OIDC_REDIRECT_URL: ""
   KIONGA_ALLOWED_ORIGIN: ""
   KAFKA_REST_URL: ""
+  # Read by the operator (model deployment and promotion) and by the gateway
+  # (the model Test dialog's input example, through MLflow's own artifact
+  # route). Allow it in networkPolicy.externalEgress: one rule covers both. When
+  # MLflow needs a bearer token, add MLFLOW_TOKEN to components.operator.secrets
+  # and components.gateway.secrets, with the key in each component's Secret.
   MLFLOW_URL: ""
   PREFECT_API_URL: ""
   S3_ENDPOINT: ""
