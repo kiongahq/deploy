@@ -27,6 +27,8 @@ spec:
                 secretKeyRef: {name: kionga-postgres, key: database-url}
             - {name: KIONGA_TENANT, value: default}
             - {name: KAFKA_REST_URL, value: "http://kafka-rest.kionga-system:8082"}
+            # Same server as the operator: model input examples for the Test dialog.
+            - {name: MLFLOW_URL, value: "http://mlflow.kionga-system:5000"}
             - {name: KIONGA_AGENT_NAMESPACE, value: default}
             - {name: KIONGA_WORKSPACE_NAMESPACE, value: default}
             - {name: KIONGA_LANGFLOW_AGENT_IMAGE, value: "ghcr.io/kiongahq/langflow-agent-runtime:latest"}
