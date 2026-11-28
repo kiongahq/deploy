@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/kiongahq/deploy/compare/v0.2.1...v0.2.2) (2026-11-28)
+
+
+### Features
+
+* **secrets:** OpenBao as the default secret store on Kubernetes ([0070ce3](https://github.com/kiongahq/deploy/commit/0070ce3bbc2c44243ff9a7295f1f077d46bfd85a))
+
 ## [0.2.1](https://github.com/kiongahq/deploy/compare/v0.2.0...v0.2.1) (2026-11-24)
 
 
