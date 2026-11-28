@@ -31,14 +31,19 @@ def test_owner_kinds_and_digest_never_need_the_value_in_clear():
     assert e2e.secret_digest(secret, "MISSING") == ""
 
 
-def deployment(annotations, generation=2, observed=2, updated=2, ready=2, total=2, want=2):
+def deployment(annotations, generation=2, observed=2, updated=2, ready=2, total=2, want=2, env=()):
     return {"metadata": {"generation": generation},
-            "spec": {"replicas": want, "template": {"metadata": {"annotations": annotations}}},
+            "spec": {"replicas": want, "template": {"metadata": {"annotations": annotations},
+                                                     "spec": {"containers": [{"name": "gateway", "env": list(env)}]}}},
             "status": {"observedGeneration": observed, "updatedReplicas": updated, "readyReplicas": ready, "replicas": total}}
+
+
+BEFORE = deployment({})["spec"]["template"]
 
 
 @pytest.mark.parametrize("current,expected", [
     (deployment({"reloader.stakater.com/last-reloaded-from": "x"}), True),
+    (deployment({}, env=[{"name": "STAKATER_KIONGA_GATEWAY_SECRET", "value": "abc"}]), True),  # env-var strategy
     (deployment({}), False),  # template unchanged
     (deployment({"r": "x"}, observed=1), False),  # controller has not seen it
     (deployment({"r": "x"}, updated=1), False),  # half rolled
@@ -47,7 +52,7 @@ def deployment(annotations, generation=2, observed=2, updated=2, ready=2, total=
     (None, False),
 ])
 def test_rolled_out_waits_for_every_replica_on_the_new_template(current, expected):
-    assert e2e.rolled_out(current, {}) is expected
+    assert e2e.rolled_out(current, BEFORE) is expected
 
 
 def crd_spec(kind):

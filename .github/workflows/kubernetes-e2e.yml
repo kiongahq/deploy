@@ -133,6 +133,8 @@ jobs:
           kubectl config use-context kind-kionga-e2e 2>/dev/null || exit 0
           python3 scripts/support-bundle.py --context kind-kionga-e2e --output "$OUT/support-bundle.tar.gz" || true
           kubectl get pods -A -o wide || true
+          kubectl -n reloader logs deployment/reloader-reloader --tail=100 || true
+          kubectl -n external-secrets logs deployment/external-secrets --tail=100 || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

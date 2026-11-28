@@ -161,11 +161,12 @@ def secret_digest(secret: Optional[dict], key: str) -> str:
 
 
 def rolled_out(deployment: Optional[dict], before_template: dict) -> bool:
-    """True once the pod template changed and every replica runs the new one."""
+    """True once the pod template changed (an annotation or an environment
+    variable, whichever way the reloader marks it) and every replica runs it."""
     if not deployment:
         return False
     spec, status = deployment.get("spec") or {}, deployment.get("status") or {}
-    template = ((spec.get("template") or {}).get("metadata") or {}).get("annotations") or {}
+    template = spec.get("template") or {}
     want = int(spec.get("replicas") or 0)
     return (template != before_template and status.get("observedGeneration", 0) >= deployment["metadata"].get("generation", 0)
             and int(status.get("updatedReplicas") or 0) == want and int(status.get("readyReplicas") or 0) == want
@@ -332,6 +333,7 @@ class Settings:
     scale_down_seconds: float = 30
     openbao_key_file: str = ""
     refresh_seconds: float = 10
+    reloader_namespace: str = "reloader"
 
 
 def application_manifest(s: Settings) -> dict:
@@ -558,16 +560,23 @@ class Runner:
         if not before_secret:
             raise StepFailed("kionga-gateway has no OIDC_CLIENT_SECRET")
         deployment = self.kube.get("deployment", "kionga-gateway", namespace=ns)
-        before_template = ((deployment["spec"]["template"].get("metadata") or {}).get("annotations") or {})
+        before_template = deployment["spec"]["template"]
         started = time.monotonic()
         self.bootstrap("seed", "--rotate", "gateway/OIDC_CLIENT_SECRET=hex:24")
         # ESO rereads OpenBao every refresh interval; allow two plus scheduling slack.
         poll(lambda: secret_digest(self.kube.get("secret", "kionga-gateway", namespace=ns), "OIDC_CLIENT_SECRET") != before_secret,
              self.s.refresh_seconds * 2 + 30, 2, what="the rotated value in Secret kionga-gateway")
         synced = time.monotonic() - started
-        poll(lambda: rolled_out(self.kube.get("deployment", "kionga-gateway", namespace=ns), before_template), self.s.timeout, 5,
-             what="the gateway to roll onto the rotated Secret",
-             describe_last=lambda _: str(replicas(self.kube.get("deployment", "kionga-gateway", namespace=ns))))
+        try:
+            poll(lambda: rolled_out(self.kube.get("deployment", "kionga-gateway", namespace=ns), before_template), self.s.timeout, 5,
+                 what="the gateway to roll onto the rotated Secret",
+                 describe_last=lambda _: str(replicas(self.kube.get("deployment", "kionga-gateway", namespace=ns))))
+        except StepFailed as error:
+            try:
+                logs = self.kube.run("logs", "deployment/reloader-reloader", "--tail=15", namespace=self.s.reloader_namespace)
+            except RuntimeError as log_error:
+                logs = str(log_error)
+            raise StepFailed(f"{error}; reloader log: {logs[-1500:]}") from error
         return f"Secret updated {synced:.0f}s after the write to OpenBao; gateway rolled in {time.monotonic() - started:.0f}s"
 
     def step_workload_secret(self) -> str:
