@@ -156,4 +156,3 @@ def test_extra_openbao_values_come_after_the_defaults(tmp_path):
     openbao = next(c for c in commands("--openbao-values", str(extra)) if c.startswith("helm upgrade --install openbao "))
     assert openbao.index("openbao-values.yaml") < openbao.index(str(extra))
     assert dry_run("--openbao-values", str(tmp_path / "missing.yaml")).returncode == 2
-

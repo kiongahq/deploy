@@ -46,8 +46,13 @@ def kubectl(argv):
     while args and args[0] in ("--context", "-n"):
         args = args[2:]
     log({"tool": "kubectl", "argv": argv})
+    if args[:2] == ["get", "statefulset"]:
+        print(len(load()["pods"]), end="")
+        return 0
     if args[:2] == ["get", "pods"]:
-        print("\n".join(load()["pods"]))
+        state = load()
+        running = state.get("running", state["pods"]) if "--field-selector=status.phase=Running" in args else state["pods"]
+        print("\n".join(running))
         return 0
     if args[:1] == ["wait"]:
         return 0

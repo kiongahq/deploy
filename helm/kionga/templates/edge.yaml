@@ -74,6 +74,10 @@ spec:
   target: {name: {{ $name }}, creationPolicy: Owner, deletionPolicy: Retain}
   data: {{ toYaml $data | nindent 4 }}
 {{- end }}
+{{- $o := .Values.secretStore.openbao }}
+{{- if and .Values.externalSecrets.workspaceTargets (not (and $o.enabled $o.workspace.enabled)) }}
+{{- fail "externalSecrets.workspaceTargets use the OpenBao store in workspaceNamespace: set secretStore.openbao.enabled and secretStore.openbao.workspace.enabled, or create those ExternalSecrets yourself" }}
+{{- end }}
 {{- range $name, $data := .Values.externalSecrets.workspaceTargets }}
 ---
 apiVersion: external-secrets.io/v1

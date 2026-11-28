@@ -424,3 +424,12 @@ def test_external_openbao_is_configured_with_the_local_cli_and_never_initialized
     config = cluster.state["objects"]["auth/kubernetes/config"]
     assert config["kubernetes_host"] == "https://api.cluster.example.com:6443" and config["token_reviewer_jwt_set"]
     assert_no_leak(cluster, result, extra=["reviewer-jwt-value", "external-admin-token"])
+
+
+def test_init_waits_for_every_server_to_run(cluster):
+    state = cluster.state
+    state["running"] = ["openbao-0"]
+    cluster.state_file.write_text(json.dumps(state))
+    result = cluster.run("init", "--key-file", str(cluster.keys), env={"OPENBAO_BOOTSTRAP_WAIT_SECONDS": "0"})
+    assert result.returncode != 0 and "1 of 3 OpenBao servers are running" in result.stderr
+    assert not cluster.state["initialized"] and not cluster.keys.exists()

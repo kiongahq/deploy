@@ -246,15 +246,30 @@ read_or_missing() {
 }
 
 seal_state() { # seal_state POD -> "initialized sealed"
-  local out
-  out="$(bao_q "$1" status -format=json 2>/dev/null)" || true
-  [[ -n "$out" ]] || die "$1: bao status returned nothing"
+  local out="" try
+  # A server whose container just started may not listen yet.
+  for try in 1 2 3 4 5 6 7 8 9 10; do
+    out="$(bao_q "$1" status -format=json 2>/dev/null)" || true
+    [[ -n "$out" ]] && break
+    sleep "${OPENBAO_BOOTSTRAP_POLL_SECONDS:-3}"
+  done
+  [[ -n "$out" ]] || die "$1: bao status returned nothing after $try tries"
   printf '%s %s\n' "$(printf '%s' "$out" | py get initialized)" "$(printf '%s' "$out" | py get sealed)"
 }
 
+# wait_running: every server the StatefulSet wants exists and runs. Sealed
+# servers are never Ready, so this waits for Running, not Ready.
 wait_running() {
-  "${kube[@]}" -n "$namespace" wait pod -l app.kubernetes.io/name=openbao,component=server \
-    --for=jsonpath='{.status.phase}'=Running --timeout=300s >/dev/null
+  local want running deadline=$((SECONDS + ${OPENBAO_BOOTSTRAP_WAIT_SECONDS:-300}))
+  want="$("${kube[@]}" -n "$namespace" get statefulset openbao -o jsonpath='{.spec.replicas}')" \
+    || die "no OpenBao StatefulSet in namespace $namespace; run helm/prerequisites/install.sh first"
+  while true; do
+    running="$("${kube[@]}" -n "$namespace" get pods -l app.kubernetes.io/name=openbao,component=server \
+      --field-selector=status.phase=Running -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -c . || true)"
+    [[ "$running" -ge "$want" ]] && return 0
+    (( SECONDS < deadline )) || die "$running of $want OpenBao servers are running; check: kubectl -n $namespace get pods"
+    sleep "${OPENBAO_BOOTSTRAP_POLL_SECONDS:-3}"
+  done
 }
 
 cmd_init() {

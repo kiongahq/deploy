@@ -134,12 +134,22 @@ def test_preflight_requires_the_secretstore_api_when_openbao_is_on(tmp_path):
     assert render_raw(tmp_path, *args, preflight={"enabled": True, "enforceOffline": True}).returncode == 0
 
 
-def test_preflight_checks_the_store_on_a_live_install():
+def test_preflight_checks_every_store_on_a_live_install():
     text = (ROOT / "helm/kionga/templates/preflight.yaml").read_text()
-    # A live lookup of the store: missing (when the chart does not render it)
-    # or not Ready fails the install with the unseal command.
-    assert 'lookup "external-secrets.io/v1" $es.storeKind' in text
+    # A live lookup of each store ExternalSecrets use, the workspace one
+    # included: missing (when the chart does not render it) or not Ready fails
+    # the install with the unseal command. scripts/kind-ci-up.sh runs it live.
+    assert 'lookup "external-secrets.io/v1" $kind $namespace $name' in text
+    assert "$o.workspace.storeName" in text
     assert "scripts/openbao-bootstrap.sh unseal" in text and "allowUnreadySecretStore" in text
+
+
+def test_workspace_targets_need_the_workspace_store(tmp_path):
+    example = yaml.safe_load((ROOT / "helm/production.example.yaml").read_text())["externalSecrets"]
+    targets = {"kionga-model-storage": [{"secretKey": "A", "remoteRef": {"key": "model-storage", "property": "A"}}]}
+    result = render_raw(tmp_path, externalSecrets=dict(example, workspaceTargets=targets),
+                        secretStore=openbao(workspace={"enabled": False, "storeName": "kionga-store", "role": ""}))
+    assert result.returncode != 0 and "secretStore.openbao.workspace.enabled" in result.stderr
 
 
 # Gateway egress -------------------------------------------------------------------

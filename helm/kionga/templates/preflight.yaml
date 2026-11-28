@@ -41,18 +41,25 @@ preflight.enforceOffline is set, in which case the API groups come from
 {{- end }}
 {{- end }}
 {{- $es := .Values.externalSecrets }}
+{{- $o := .Values.secretStore.openbao }}
 {{- if and $live $es.enabled }}
-{{- $storeNamespace := ternary "" .Release.Namespace (eq $es.storeKind "ClusterSecretStore") }}
-{{- $store := lookup "external-secrets.io/v1" $es.storeKind $storeNamespace $es.storeName }}
-{{- $rendered := .Values.secretStore.openbao.enabled }}
-{{- if and (empty $store) (not $rendered) }}
-{{- fail (printf "preflight: externalSecrets.storeName names %s %s, which does not exist in %s. Create it (helm/secretstore-openbao.example.yaml, or a cloud example) or set secretStore.openbao.enabled." $es.storeKind $es.storeName (default "the cluster" $storeNamespace)) }}
+{{- /* Each store ExternalSecrets use: kind, namespace ("" for a cluster store), name, rendered by this chart. */ -}}
+{{- $stores := list (list $es.storeKind (ternary "" .Release.Namespace (eq $es.storeKind "ClusterSecretStore")) $es.storeName $o.enabled) }}
+{{- if $es.workspaceTargets }}
+{{- $stores = append $stores (list "SecretStore" .Values.workspaceNamespace $o.workspace.storeName (and $o.enabled $o.workspace.enabled)) }}
 {{- end }}
-{{- if and $store (not (and $rendered .Values.preflight.allowUnreadySecretStore)) }}
+{{- range $s := $stores }}
+{{- $kind := index $s 0 }}{{ $namespace := index $s 1 }}{{ $name := index $s 2 }}{{ $rendered := index $s 3 }}
+{{- $store := lookup "external-secrets.io/v1" $kind $namespace $name }}
+{{- if and (empty $store) (not $rendered) }}
+{{- fail (printf "preflight: externalSecrets names %s %s, which does not exist in %s. Create it (helm/secretstore-openbao.example.yaml, or a cloud example) or set secretStore.openbao.enabled." $kind $name (default "the cluster" $namespace)) }}
+{{- end }}
+{{- if and $store (not (and $rendered $.Values.preflight.allowUnreadySecretStore)) }}
 {{- $ready := dict }}
 {{- range (dig "status" "conditions" (list) $store) }}{{ if eq .type "Ready" }}{{ $ready = . }}{{ end }}{{ end }}
 {{- if ne (toString (dig "status" "" $ready)) "True" }}
-{{- fail (printf "preflight: %s %s is not Ready (%s: %s). If OpenBao is sealed, run scripts/openbao-bootstrap.sh unseal --key-file PATH; check: kubectl -n %s describe %s %s.%s" $es.storeKind $es.storeName (toString (dig "reason" "no status yet" $ready)) (toString (dig "message" "" $ready)) (default .Release.Namespace $storeNamespace) (lower $es.storeKind) $es.storeName (ternary " Set preflight.allowUnreadySecretStore=true when this upgrade repairs the chart's own store." "" $rendered)) }}
+{{- fail (printf "preflight: %s %s in %s is not Ready (%s: %s). If OpenBao is sealed, run scripts/openbao-bootstrap.sh unseal --key-file PATH; check: kubectl describe %s %s.%s" $kind $name (default "the cluster" $namespace) (toString (dig "reason" "no status yet" $ready)) (toString (dig "message" "" $ready)) (lower $kind) $name (ternary " Set preflight.allowUnreadySecretStore=true when this upgrade repairs the chart's own store." "" $rendered)) }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

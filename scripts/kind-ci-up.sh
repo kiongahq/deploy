@@ -152,7 +152,7 @@ step "Preflight against the live store"
 helm upgrade kionga "$ROOT/helm/kionga" --kube-context "$CONTEXT" --namespace kionga-system --dry-run=server \
   -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --set-file "secretStore.openbao.caBundle=$OUT/openbao-ca.crt" >/dev/null
 if helm upgrade kionga "$ROOT/helm/kionga" --kube-context "$CONTEXT" --namespace kionga-system --dry-run=server \
-    -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --set secretStore.openbao.enabled=false \
+    -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --set secretStore.openbao.enabled=false --set externalSecrets.workspaceTargets=null \
     --set externalSecrets.storeName=kionga-missing-store >/dev/null 2>"$OUT/preflight-missing.log"; then
   echo "the preflight accepted a SecretStore that does not exist" >&2; exit 1
 fi
