@@ -265,7 +265,10 @@ the prerequisites and the chart on kind with sslip.io host names, and runs
 `scripts/e2e-runtime.py`: an application answers at its host, a deleted pod
 recovers, load scales it up, a function scales to zero and wakes, an agent and a
 model become Ready and the model predicts, a pipeline runs through the Jobs
-executor. It cannot pass until the operator controllers and the applications API
+executor. The lane installs OpenBao and External Secrets Operator, bootstraps
+and seeds OpenBao, and creates every platform Secret from it; the secret steps
+check that each ExternalSecret is Ready, that a value rotated in OpenBao rolls
+the gateway, and that an application loads a workload secret from OpenBao. It cannot pass until the operator controllers and the applications API
 are in kiongahq/platform; until then, dispatch it with `platform_ref` set to their
 branch. Locally, `scripts/kind-ci-up.sh` does the same on Linux with Docker.
 

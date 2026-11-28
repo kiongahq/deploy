@@ -1,0 +1,12 @@
+# OpenBao on the kind e2e cluster: the same three Raft servers with TLS as
+# helm/prerequisites/openbao-values.yaml (never dev mode), trimmed to fit the
+# runner. kind has two schedulable workers, so the one-server-per-node rule is
+# off here.
+server:
+  affinity: ""
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  dataStorage:
+    size: 1Gi
+    storageClass: standard

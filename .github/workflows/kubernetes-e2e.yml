@@ -3,7 +3,9 @@ name: Kubernetes e2e
 # Live-cluster lane: builds Kionga from the selected component refs, installs
 # the prerequisites and the chart on kind the way a customer would, then runs
 # scripts/e2e-runtime.py (application, pod recovery, scale-up, function scale to
-# zero and wake, agent, model prediction, pipeline through the Jobs executor).
+# zero and wake, agent, model prediction, pipeline through the Jobs executor),
+# then the OpenBao secret steps (every platform Secret from OpenBao through
+# External Secrets, a rotated value rolls the gateway, a workload secret).
 # Images go to a registry on the runner only; nothing is pushed anywhere else.
 # It needs the operator controllers and the applications API in kiongahq/platform:
 # until they merge, dispatch it with platform_ref set to their branch. On a pull
@@ -31,6 +33,9 @@ on:
       steps:
         description: Comma-separated e2e steps (default all)
         default: application,recovery,scale-up,function,agent,model,pipeline
+      secret_steps:
+        description: Comma-separated OpenBao secret steps (empty skips them)
+        default: secrets,secret-rotation,workload-secret
 
 permissions:
   contents: read
@@ -102,12 +107,25 @@ jobs:
             --base-domain apps.127.0.0.1.sslip.io --gateway-url https://kionga.127.0.0.1.sslip.io \
             --ca-file "$OUT/ca.crt" --agent-image "$agent_runtime" --local-password-file "$OUT/local-password" \
             --scale-down-seconds 30 --steps "$STEPS" --report "$OUT/e2e-report.json"
+      - name: Run the OpenBao secret steps
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.secret_steps != '') }}
+        env:
+          SECRET_STEPS: ${{ inputs.secret_steps || 'secrets,secret-rotation,workload-secret' }}
+        run: |
+          set -a; source "$OUT/images.env"; set +a
+          python3 scripts/e2e-runtime.py --context kind-kionga-e2e --namespace kionga-workloads \
+            --base-domain apps.127.0.0.1.sslip.io --gateway-url https://kionga.127.0.0.1.sslip.io \
+            --ca-file "$OUT/ca.crt" --agent-image "$agent_runtime" --local-password-file "$OUT/local-password" \
+            --openbao-key-file "$OUT/openbao-init.json" --refresh-seconds 10 \
+            --steps "$SECRET_STEPS" --report "$OUT/e2e-secrets-report.json"
       - name: Summarize
         if: always()
         run: |
-          if [ -f "$OUT/e2e-report.json" ]; then
-            python3 scripts/e2e-runtime.py --summarize "$OUT/e2e-report.json" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          for report in "$OUT/e2e-report.json" "$OUT/e2e-secrets-report.json"; do
+            if [ -f "$report" ]; then
+              python3 scripts/e2e-runtime.py --summarize "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - name: Collect a support bundle
         if: always()
         run: |
@@ -120,6 +138,7 @@ jobs:
           name: kubernetes-e2e
           path: |
             e2e-out/e2e-report.json
+            e2e-out/e2e-secrets-report.json
             e2e-out/support-bundle.tar.gz
           if-no-files-found: ignore
           retention-days: 7
