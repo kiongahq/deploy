@@ -302,3 +302,13 @@ def test_transit_needs_the_signing_key_and_https(tmp_path):
     result = render_raw(tmp_path, components=gateway_with_signing_key(),
                         secretStore=openbao(transit={"enabled": True, "address": "http://openbao:8200", "key": "k", "role": ""}))
     assert result.returncode != 0 and "transit.address must be an https://" in result.stderr
+
+
+
+def test_spread_ignores_nodes_the_pods_cannot_run_on(tmp_path):
+    # A rotated Secret rolls the gateway with one surge pod. With tainted nodes
+    # counted as spread domains (the default), that pod could not schedule on a
+    # cluster where every schedulable node already ran a replica.
+    for deployment in (d for d in render_chart(tmp_path) if d["kind"] == "Deployment"):
+        for constraint in deployment["spec"]["template"]["spec"]["topologySpreadConstraints"]:
+            assert constraint["nodeTaintsPolicy"] == "Honor", deployment["metadata"]["name"]

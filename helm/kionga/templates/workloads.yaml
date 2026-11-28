@@ -49,15 +49,20 @@ spec:
       {{- with $.Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
+      # Nodes the pods cannot run on (tainted control planes) do not count as
+      # spread domains; otherwise a rolling update's surge pod is unschedulable
+      # whenever every schedulable node already holds one replica.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: ScheduleAnyway
+          nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
       containers:
