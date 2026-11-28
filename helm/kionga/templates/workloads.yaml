@@ -145,6 +145,21 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ $refs.secretName }}, key: {{ . }}}}
             {{- end }}
             {{- end }}
+            {{- with $.Values.secretStore.openbao.transit }}
+            {{- if .enabled }}
+            {{- if not (hasPrefix "https://" .address) }}{{ fail "secretStore.openbao.transit.address must be an https:// URL" }}{{ end }}
+            {{- if not (has "KIONGA_SIGNING_KEY" $component.secrets) }}{{ fail "secretStore.openbao.transit needs KIONGA_SIGNING_KEY in components.gateway.secrets" }}{{ end }}
+            # The credential key stays in OpenBao transit; the gateway logs in
+            # with its service-account token.
+            - {name: KIONGA_KEY_PROVIDER, value: openbao}
+            - {name: OPENBAO_ADDR, value: {{ .address | quote }}}
+            - {name: OPENBAO_TRANSIT_KEY, value: {{ .key | quote }}}
+            - {name: OPENBAO_AUTH_ROLE, value: {{ default (printf "%s-gateway" $.Release.Name) .role | quote }}}
+            {{- if $.Values.secretStore.openbao.caBundle }}
+            - {name: OPENBAO_CACERT_FILE, value: /etc/kionga/openbao/ca.crt}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if $.Values.sandbox.enabled }}
             - {name: KIONGA_SANDBOX_URL, value: "http://{{ $.Release.Name }}-sandbox-manager.{{ $.Release.Namespace }}.svc:8088"}
             - name: KIONGA_SANDBOX_TOKEN
@@ -203,6 +218,9 @@ spec:
             {{- if $.Values.trustedCA.configMapName }}
             - {name: trusted-ca, mountPath: /etc/kionga/ca, readOnly: true}
             {{- end }}
+            {{- if and (eq $name "gateway") $.Values.secretStore.openbao.transit.enabled $.Values.secretStore.openbao.caBundle }}
+            - {name: openbao-ca, mountPath: /etc/kionga/openbao, readOnly: true}
+            {{- end }}
       volumes:
         - name: config
           configMap: {name: {{ $.Release.Name }}-config}
@@ -213,6 +231,12 @@ spec:
           configMap:
             name: {{ $.Values.trustedCA.configMapName }}
             items: [{key: {{ $.Values.trustedCA.key }}, path: {{ $.Values.trustedCA.key }}}]
+        {{- end }}
+        {{- if and (eq $name "gateway") $.Values.secretStore.openbao.transit.enabled $.Values.secretStore.openbao.caBundle }}
+        - name: openbao-ca
+          configMap:
+            name: {{ printf "%s-openbao-ca" $.Release.Name }}
+            items: [{key: ca.crt, path: ca.crt}]
         {{- end }}
         {{- if and (eq $name "gateway") $.Values.agentDesigner.enabled }}
         - name: designer-token

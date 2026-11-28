@@ -164,6 +164,8 @@ def bao(argv):
             fields = {"db_name": fields["db_name"], "creation_statements": [fields["creation_statements"]],
                       "default_ttl": 3600 if fields["default_ttl"] == "1h" else fields["default_ttl"],
                       "max_ttl": 86400 if fields["max_ttl"] == "24h" else fields["max_ttl"]}
+        if "/keys/" in path:
+            fields = {"type": fields.get("type", "aes256-gcm96"), "derived": fields.get("derived") == "true"}
         if "token_reviewer_jwt" in fields:
             fields["token_reviewer_jwt_set"] = bool(fields.pop("token_reviewer_jwt"))
         objects[path] = fields

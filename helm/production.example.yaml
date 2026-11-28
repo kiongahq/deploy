@@ -90,6 +90,11 @@ secretStore:
     path: kionga
     workspace:
       enabled: true
+    # The credential key in OpenBao transit, once your gateway release supports
+    # it: also add KIONGA_SIGNING_KEY to components.gateway.secrets and to the
+    # kionga-gateway target below (seed gateway/KIONGA_SIGNING_KEY=base64:32).
+    #transit:
+    #  enabled: true
 externalSecrets:
   enabled: true
   storeName: kionga-store

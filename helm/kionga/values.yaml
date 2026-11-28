@@ -262,8 +262,24 @@ secretStore:
       storeName: kionga-store
       # Empty: <release>-workspace.
       role: ""
+    # The credential key in OpenBao transit: the gateway encrypts and decrypts
+    # through the derived key below and never holds the key itself. Needs a
+    # gateway image with the openbao key provider (kiongahq/platform), the
+    # <release>-gateway role from openbao-bootstrap.sh, KIONGA_SIGNING_KEY in
+    # components.gateway.secrets (32+ characters, through externalSecrets), and
+    # caBundle unless OpenBao has a publicly trusted certificate. Turns on the
+    # gateway egress below. Drop KIONGA_CREDENTIAL_KEY from the gateway's
+    # secrets once stored tokens are rewrapped.
+    transit:
+      enabled: false
+      # The active server's Service: the gateway does not follow redirects.
+      address: https://openbao-active.openbao.svc:8200
+      key: kionga-credential
+      # Empty: <release>-gateway.
+      role: ""
     # Egress from the gateway to OpenBao, for transit encryption of the
-    # credential key. Empty `to`: pods labelled podLabels in namespace.
+    # credential key (always on with transit.enabled). Empty `to`: pods
+    # labelled podLabels in namespace.
     gatewayEgress:
       enabled: false
       namespace: openbao

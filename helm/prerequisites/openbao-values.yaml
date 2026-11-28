@@ -6,7 +6,7 @@
 #
 # Seal: Shamir by default. Each server starts sealed after every restart and
 # scripts/openbao-bootstrap.sh unseal opens it with the key shares. Auto unseal
-# built into OpenBao 2.7: transit (another OpenBao), kmip and static. PKCS#11
+# built into OpenBao 2.7.3: transit (another OpenBao), kmip and static. PKCS#11
 # and the cloud KMS seals (awskms, gcpckms, azurekeyvault, alicloudkms, ocikms)
 # are KMS plugins from openbao/openbao-plugins since 2.7.0.
 global:

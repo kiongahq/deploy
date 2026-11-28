@@ -210,7 +210,7 @@ def test_mounts_transit_key_and_auth_are_created(ready):
     state = cluster.state
     assert state["mounts"]["kionga/"] == {"type": "kv", "options": {"version": "2"}}
     assert state["mounts"]["transit/"]["type"] == "transit"
-    assert state["objects"]["transit/keys/kionga-credential"]["type"] == "aes256-gcm96"
+    assert state["objects"]["transit/keys/kionga-credential"] == {"type": "aes256-gcm96", "derived": True}
     assert state["auths"]["kubernetes/"]["type"] == "kubernetes"
     assert state["objects"]["auth/kubernetes/config"] == {"kubernetes_host": "https://kubernetes.default.svc:443"}
 
@@ -221,10 +221,11 @@ def test_each_consumer_gets_one_least_privilege_policy(ready):
     assert paths(platform) == {f"kionga/data/{p}" for p in ("shared", "gateway", "operator", "worker", "features", "storage",
                                                              "tracing", "agent-designer", "sandbox", "secret-references")}
     assert paths(policy(cluster, "kionga-workspace-read")) == {"kionga/data/model-storage", "kionga/data/workloads/*"}
-    assert paths(policy(cluster, "kionga-gateway-transit")) == {"transit/encrypt/kionga-credential", "transit/decrypt/kionga-credential"}
+    assert paths(policy(cluster, "kionga-gateway-transit")) == {"transit/encrypt/kionga-credential", "transit/decrypt/kionga-credential",
+                                                                "auth/token/renew-self"}
     for name in ("kionga-platform-read", "kionga-workspace-read"):
         assert policy(cluster, name).count('capabilities = ["read"]') == len(paths(policy(cluster, name)))
-    assert policy(cluster, "kionga-gateway-transit").count('capabilities = ["update"]') == 2
+    assert policy(cluster, "kionga-gateway-transit").count('capabilities = ["update"]') == 3
     for name in ("kionga-platform-read", "kionga-workspace-read", "kionga-gateway-transit"):
         text = policy(cluster, name)
         assert "sudo" not in text and "delete" not in text and "list" not in text and "create" not in text
@@ -243,6 +244,17 @@ def test_roles_bind_one_service_account_in_one_namespace(ready):
     assert workspace["token_policies"] == ["kionga-workspace-read"]
     gateway = objects["auth/kubernetes/role/kionga-gateway"]
     assert gateway["bound_service_account_names"] == ["kionga-gateway"] and gateway["token_policies"] == ["kionga-gateway-transit"]
+    assert gateway["bound_service_account_namespaces"] == ["kionga-system"]
+    assert (gateway["token_ttl"], gateway["token_max_ttl"], gateway["audience"]) == (3600, 86400, "")
+
+
+def test_a_transit_key_that_is_not_derived_is_refused(ready):
+    cluster = ready
+    state = cluster.state
+    state["objects"]["transit/keys/kionga-credential"] = {"type": "aes256-gcm96", "derived": False}
+    cluster.state_file.write_text(json.dumps(state))
+    result = cluster.run("configure", "--key-file", str(cluster.keys))
+    assert result.returncode != 0 and "not a derived aes256-gcm96 key" in result.stderr
 
 
 def test_release_and_namespaces_flow_into_roles(cluster):

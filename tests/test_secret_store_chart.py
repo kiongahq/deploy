@@ -254,3 +254,51 @@ def test_no_hashicorp_vault_images_charts_or_agent_config():
             offenders.append(path)
     assert offenders == []
     assert "Vault security" not in (ROOT / "ARCHITECTURE.md").read_text()
+
+
+# Transit for the credential key ------------------------------------------------------
+
+def gateway_with_signing_key():
+    components = yaml.safe_load((ROOT / "helm/kionga/values.yaml").read_text())["components"]
+    gateway = dict(components["gateway"], secrets=["DATABASE_URL", "OIDC_CLIENT_SECRET", "KIONGA_INTERNAL_TOKEN", "KIONGA_SIGNING_KEY"])
+    return {**components, "gateway": gateway}
+
+
+def gateway_pod(docs):
+    return find(docs, "Deployment", "kionga-gateway")["spec"]["template"]["spec"]
+
+
+def test_transit_is_off_by_default(tmp_path):
+    from test_kubernetes_runtime_chart import env
+    assert "KIONGA_KEY_PROVIDER" not in env(render_chart(tmp_path), "gateway")
+
+
+def test_transit_points_the_gateway_at_openbao_without_the_credential_key(tmp_path):
+    from test_kubernetes_runtime_chart import env
+    pem = "-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n"
+    docs = render_chart(tmp_path, components=gateway_with_signing_key(),
+                        secretStore=openbao(caBundle=pem, transit={"enabled": True, "address": "https://openbao-active.openbao.svc:8200",
+                                                                    "key": "kionga-credential", "role": ""}))
+    variables = env(docs, "gateway")
+    assert variables["KIONGA_KEY_PROVIDER"] == "openbao"
+    assert variables["OPENBAO_ADDR"] == "https://openbao-active.openbao.svc:8200"
+    assert variables["OPENBAO_TRANSIT_KEY"] == "kionga-credential" and variables["OPENBAO_AUTH_ROLE"] == "kionga-gateway"
+    assert variables["OPENBAO_CACERT_FILE"] == "/etc/kionga/openbao/ca.crt"
+    assert variables["KIONGA_SIGNING_KEY_FILE"] == "/run/secrets/KIONGA_SIGNING_KEY"
+    assert "KIONGA_CREDENTIAL_KEY_FILE" not in variables and "KIONGA_CREDENTIAL_KEY" not in variables
+    pod = gateway_pod(docs)
+    assert {"name": "openbao-ca", "configMap": {"name": "kionga-openbao-ca", "items": [{"key": "ca.crt", "path": "ca.crt"}]}} in pod["volumes"]
+    assert find(docs, "ServiceAccount", "kionga-gateway")["automountServiceAccountToken"] is True
+    assert egress_policy(docs), "transit opens the gateway's egress to OpenBao"
+    others = [d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] != "kionga-gateway"]
+    assert all("OPENBAO_ADDR" not in str(d) for d in others)
+    assert "auth/token/renew-self" in BOOTSTRAP and "derived=true" in BOOTSTRAP
+
+
+def test_transit_needs_the_signing_key_and_https(tmp_path):
+    result = render_raw(tmp_path, secretStore=openbao(transit={"enabled": True, "address": "https://openbao-active.openbao.svc:8200",
+                                                                "key": "kionga-credential", "role": ""}))
+    assert result.returncode != 0 and "KIONGA_SIGNING_KEY" in result.stderr
+    result = render_raw(tmp_path, components=gateway_with_signing_key(),
+                        secretStore=openbao(transit={"enabled": True, "address": "http://openbao:8200", "key": "k", "role": ""}))
+    assert result.returncode != 0 and "transit.address must be an https://" in result.stderr

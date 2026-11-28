@@ -132,7 +132,7 @@ seed_dir="$OUT/openbao-seed"
   printf '[{"key_id":"e2e","key_sha256":"%s","project":"e2e"}]' "$trace_hash" >"$seed_dir/tracing/TRACE_PROXY_KEYS" )
 "${BOOTSTRAP[@]}" seed --kube-context "$CONTEXT" --key-file "$OUT/openbao-init.json" --from-dir "$seed_dir" \
   --generate shared/KIONGA_INTERNAL_TOKEN=hex:24 --generate gateway/OIDC_CLIENT_SECRET=hex:24 \
-  --generate gateway/KIONGA_CREDENTIAL_KEY=base64:32
+  --generate gateway/KIONGA_CREDENTIAL_KEY=base64:32 --generate gateway/KIONGA_SIGNING_KEY=base64:32
 find "$seed_dir" -type f -delete
 find "$seed_dir" -depth -type d -empty -delete
 

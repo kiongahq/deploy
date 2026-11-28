@@ -365,9 +365,10 @@ policy_workspace() {
   done
 }
 policy_gateway() {
-  echo "# The gateway: encrypt and decrypt with its transit key, nothing else."
+  echo "# The gateway: encrypt and decrypt with its transit key and renew its own token, nothing else."
   printf 'path "%s/encrypt/%s" {\n  capabilities = ["update"]\n}\n' "$transit_mount" "$transit_key"
   printf 'path "%s/decrypt/%s" {\n  capabilities = ["update"]\n}\n' "$transit_mount" "$transit_key"
+  printf 'path "auth/token/renew-self" {\n  capabilities = ["update"]\n}\n'
 }
 policy_gateway_database() {
   echo "# The gateway: dynamic PostgreSQL credentials from its database role."
@@ -385,18 +386,19 @@ ensure_policy() { # ensure_policy NAME TEXT
   fi
 }
 
-ensure_role() { # ensure_role NAME SA NAMESPACE POLICIES(csv) AUDIENCE TTL
-  local name="$1" sa="$2" ns="$3" policies="$4" aud="$5" ttl="$6" current
+ensure_role() { # ensure_role NAME SA NAMESPACE POLICIES(csv) AUDIENCE TTL MAX_TTL
+  local name="$1" sa="$2" ns="$3" policies="$4" aud="$5" ttl="$6" max_ttl="$7" current
   local policies_json
   policies_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1].split(",")))' "$policies")"
   current="$(read_or_missing "$target" "auth/$auth_mount/role/$name")"
   if [[ -n "$current" ]] && printf '%s' "$current" | py same "bound_service_account_names=[\"$sa\"]" \
-      "bound_service_account_namespaces=[\"$ns\"]" "token_policies=$policies_json" "audience=\"$aud\"" "token_ttl=$ttl"; then
+      "bound_service_account_namespaces=[\"$ns\"]" "token_policies=$policies_json" "audience=\"$aud\"" "token_ttl=$ttl" \
+      "token_max_ttl=$max_ttl"; then
     log "role $name is current"
     return
   fi
   bao_q "$target" write "auth/$auth_mount/role/$name" bound_service_account_names="$sa" bound_service_account_namespaces="$ns" \
-    token_policies="$policies" audience="$aud" token_ttl="$ttl" token_max_ttl="$((ttl * 4))" >/dev/null
+    token_policies="$policies" audience="$aud" token_ttl="$ttl" token_max_ttl="$max_ttl" >/dev/null
   log "role $name written ($sa in $ns, policies $policies)"
 }
 
@@ -430,12 +432,18 @@ ensure_kubernetes_config() {
   log "Kubernetes auth config written ($kube_host)"
 }
 
+# The gateway passes each record's context to transit and refuses a key that
+# is not derived. derived cannot change after creation, so a wrong key stops here.
 ensure_transit_key() {
-  if [[ -n "$(read_or_missing "$target" "$transit_mount/keys/$transit_key")" ]]; then
-    log "transit key $transit_key exists"
+  local current
+  current="$(read_or_missing "$target" "$transit_mount/keys/$transit_key")"
+  if [[ -z "$current" ]]; then
+    bao_q "$target" write -f "$transit_mount/keys/$transit_key" type=aes256-gcm96 derived=true >/dev/null
+    log "transit key $transit_key created (aes256-gcm96, derived)"
+  elif printf '%s' "$current" | py same "derived=true" "type=\"aes256-gcm96\""; then
+    log "transit key $transit_key exists (derived)"
   else
-    bao_q "$target" write -f "$transit_mount/keys/$transit_key" type=aes256-gcm96 >/dev/null
-    log "transit key $transit_key created"
+    die "transit key $transit_key exists but is not a derived aes256-gcm96 key; the gateway refuses it. Create a new key name and pass it to the gateway."
   fi
 }
 
@@ -498,9 +506,9 @@ cmd_configure() {
     ensure_policy "$release-gateway-database" "$(policy_gateway_database)"
     gateway_policies+=",$release-gateway-database"
   fi
-  ensure_role "$release-platform" "$platform_sa" "$release_ns" "$release-platform-read" "$audience" 1200
-  ensure_role "$release-workspace" "$platform_sa" "$workspace_ns" "$release-workspace-read" "$audience" 1200
-  ensure_role "$release-gateway" "$gateway_sa" "$release_ns" "$gateway_policies" "$gateway_audience" 3600
+  ensure_role "$release-platform" "$platform_sa" "$release_ns" "$release-platform-read" "$audience" 1200 4800
+  ensure_role "$release-workspace" "$platform_sa" "$workspace_ns" "$release-workspace-read" "$audience" 1200 4800
+  ensure_role "$release-gateway" "$gateway_sa" "$release_ns" "$gateway_policies" "$gateway_audience" 3600 86400
   log "configured: KV v2 at $kv_mount/, transit key $transit_key, roles $release-platform, $release-workspace, $release-gateway"
 }
 

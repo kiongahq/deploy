@@ -10,7 +10,7 @@ the first one that is missing.
 | KEDA | `2.21.0` | Scaling objects for applications, functions and agents |
 | KEDA HTTP add-on | `0.16.0` | Request-based scaling and scale to zero; holds requests while a workload wakes |
 | KServe | `v0.21.0` | Model endpoints in Standard (raw) mode: plain Deployments, no Knative, no Istio |
-| OpenBao | `2.7.2` (chart `0.30.7`) | The default secret store: three servers on integrated Raft storage, TLS from cert-manager. MPL-2.0 |
+| OpenBao | `2.7.3` (chart `0.30.8`) | The default secret store: three servers on integrated Raft storage, TLS from cert-manager. MPL-2.0 |
 | External Secrets Operator | `2.15.0` | Creates the platform Secrets from OpenBao (or a cloud store). Apache-2.0 |
 | Reloader | chart `2.2.20` | Rolls Kionga Deployments in the release namespace when a Secret they mount changes. Apache-2.0 |
 | Traefik (optional) | chart `42.2.0` | Only with `--ingress traefik`, for kind or a cluster with no controller |
@@ -51,12 +51,13 @@ scripts/openbao-bootstrap.sh all --kube-context my-cluster --key-file ~/kionga-o
 - `unseal` opens every sealed server. Run it after any OpenBao pod restarts:
   `scripts/openbao-bootstrap.sh unseal --key-file PATH`. A sealed OpenBao makes
   the SecretStore not Ready, and the chart's preflight names that.
-- `configure` mounts KV v2 at `kionga/`, creates the transit key
-  `kionga-credential`, enables Kubernetes auth and writes one policy and role per
-  consumer: `kionga-platform` (External Secrets in the release namespace, read on
-  `kionga/<component>`), `kionga-workspace` (read on `kionga/workloads/*` and
-  `kionga/model-storage`) and `kionga-gateway` (transit encrypt and decrypt with
-  its key only). `--with-database` adds dynamic PostgreSQL credentials for the
+- `configure` mounts KV v2 at `kionga/`, creates the derived transit key
+  `kionga-credential` (aes256-gcm96), enables Kubernetes auth and writes one
+  policy and role per consumer: `kionga-platform` (External Secrets in the release
+  namespace, read on `kionga/<component>`), `kionga-workspace` (read on
+  `kionga/workloads/*` and `kionga/model-storage`) and `kionga-gateway` (transit
+  encrypt and decrypt with its key and renewing its own token; tokens live one
+  hour, at most 24). `--with-database` adds dynamic PostgreSQL credentials for the
   gateway.
 - `seed` writes platform secrets without printing them:
   `--from-dir DIR` (files at `DIR/gateway/DATABASE_URL` and so on),
@@ -72,7 +73,7 @@ you have an admin policy of your own. For an OpenBao you already run, pass
 `--addr https://bao.example.com:8200` with a local `bao` CLI: `configure` and
 `seed` work, `init` and `unseal` stay yours.
 
-Seals built into OpenBao 2.7.2: Shamir (the default), `transit` (another
+Seals built into OpenBao 2.7.3: Shamir (the default), `transit` (another
 OpenBao), `kmip` and `static`. PKCS#11 and the cloud KMS seals are KMS plugins
 from openbao/openbao-plugins.
 
