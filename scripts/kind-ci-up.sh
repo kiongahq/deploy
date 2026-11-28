@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build Kionga from component checkouts and install it on a fresh kind cluster
-# the way a customer would: prerequisites, then the chart with digest-pinned
-# images. For Linux CI (.github/workflows/kubernetes-e2e.yml); it needs Docker,
+# the way a customer would: prerequisites, OpenBao bootstrap and seeding, then
+# the chart with digest-pinned images. Every platform Secret comes from OpenBao
+# through External Secrets Operator; only the test databases in kionga-data get
+# kubectl-created Secrets. For Linux CI (.github/workflows/kubernetes-e2e.yml); it needs Docker,
 # kind, kubectl, helm and about 20 GB of disk. Images go to a registry container
 # on this machine only (localhost:5001), never to a public registry.
 #
@@ -25,6 +27,7 @@ KUBECTL=(kubectl --context "$CONTEXT")
 mkdir -p "$OUT"
 
 step() { printf '\n== %s (%s)\n' "$1" "$(date -u +%H:%M:%S)"; }
+BOOTSTRAP=(bash "$ROOT/scripts/openbao-bootstrap.sh")
 for tool in docker kind kubectl helm openssl python3; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
 done
@@ -74,7 +77,18 @@ build mlflow "$ROOT/mlflow"
 printf 'agent_runtime=%s\nmlflow=%s\n' "${IMAGES[agent-runtime]}" "${IMAGES[mlflow]}" >"$OUT/images.env"
 
 step "Prerequisites"
-bash "$ROOT/helm/prerequisites/install.sh" --kube-context "$CONTEXT" --ingress traefik --traefik-values "$ROOT/kind/ci/traefik-values.yaml"
+bash "$ROOT/helm/prerequisites/install.sh" --kube-context "$CONTEXT" --ingress traefik --traefik-values "$ROOT/kind/ci/traefik-values.yaml" \
+  --openbao-values "$ROOT/kind/ci/openbao-values.yaml"
+
+step "OpenBao: initialize, unseal, configure"
+# The key shares stay on the runner (never in the cluster, never uploaded).
+"${BOOTSTRAP[@]}" all --kube-context "$CONTEXT" --key-file "$OUT/openbao-init.json" --ca-out "$OUT/openbao-ca.crt"
+# A rerun must change nothing.
+"${BOOTSTRAP[@]}" all --kube-context "$CONTEXT" --key-file "$OUT/openbao-init.json" 2>"$OUT/openbao-rerun.log"
+if grep -E "written|enabled|created|initialized:" "$OUT/openbao-rerun.log"; then
+  echo "openbao-bootstrap.sh changed state on a rerun" >&2; exit 1
+fi
+"${BOOTSTRAP[@]}" status --kube-context "$CONTEXT"
 
 step "Test dependencies: CA, PostgreSQL with TLS, object store, MLflow"
 secret() { openssl rand -hex 24; }
@@ -99,29 +113,49 @@ done
 sed "s|MLFLOW_IMAGE|${IMAGES[mlflow]}|" "$ROOT/kind/ci/register-model.yaml" | "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" -n kionga-data wait --for=condition=Complete job/register-model --timeout=10m
 
-step "Kionga secrets"
-internal="$(secret)"
-database_url="postgres://kionga:${pg_password}@postgres.kionga-data.svc:5432/kionga?sslmode=verify-full&sslrootcert=/etc/kionga/ca/ca.crt"
-local_password="$(secret)"
-echo "$local_password" >"$OUT/local-password" && chmod 600 "$OUT/local-password"
-create() { "${KUBECTL[@]}" -n kionga-system create secret generic "$@" --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f - >/dev/null; }
-create kionga-gateway --from-literal=DATABASE_URL="$database_url" --from-literal=OIDC_CLIENT_SECRET="$(secret)" \
-  --from-literal=KIONGA_INTERNAL_TOKEN="$internal" --from-literal=KIONGA_CREDENTIAL_KEY="$(openssl rand -base64 32)" \
-  --from-literal=KIONGA_LOCAL_PASSWORD="$local_password"
-create kionga-features --from-literal=REDIS_URL=redis://redis.kionga-data.svc:6379/0 --from-literal=KIONGA_INTERNAL_TOKEN="$internal"
-create kionga-storage --from-literal=S3_ACCESS_KEY="$access_key" --from-literal=S3_SECRET_KEY="$secret_key" --from-literal=KIONGA_INTERNAL_TOKEN="$internal"
-trace_key="$(secret)"
-trace_hash="$(printf %s "$trace_key" | openssl dgst -sha256 -r | cut -d' ' -f1)"
-create kionga-tracing --from-literal=TRACE_PROXY_KEYS="[{\"key_id\":\"e2e\",\"key_sha256\":\"$trace_hash\",\"project\":\"e2e\"}]"
+step "Kionga secrets in OpenBao"
+# Values derived from the test databases go in as files; the rest are random
+# values OpenBao keeps. Nothing is printed and nothing becomes a kubectl Secret.
+seed_dir="$OUT/openbao-seed"
+( umask 077
+  mkdir -p "$seed_dir"/{gateway,features,storage,tracing,model-storage}
+  printf '%s' "postgres://kionga:${pg_password}@postgres.kionga-data.svc:5432/kionga?sslmode=verify-full&sslrootcert=/etc/kionga/ca/ca.crt" \
+    >"$seed_dir/gateway/DATABASE_URL"
+  secret >"$OUT/local-password"
+  cp "$OUT/local-password" "$seed_dir/gateway/KIONGA_LOCAL_PASSWORD"
+  printf '%s' redis://redis.kionga-data.svc:6379/0 >"$seed_dir/features/REDIS_URL"
+  printf '%s' "$access_key" >"$seed_dir/storage/S3_ACCESS_KEY"
+  printf '%s' "$secret_key" >"$seed_dir/storage/S3_SECRET_KEY"
+  printf '%s' "$access_key" >"$seed_dir/model-storage/AWS_ACCESS_KEY_ID"
+  printf '%s' "$secret_key" >"$seed_dir/model-storage/AWS_SECRET_ACCESS_KEY"
+  trace_hash="$(secret | openssl dgst -sha256 -r | cut -d' ' -f1)"
+  printf '[{"key_id":"e2e","key_sha256":"%s","project":"e2e"}]' "$trace_hash" >"$seed_dir/tracing/TRACE_PROXY_KEYS" )
+"${BOOTSTRAP[@]}" seed --kube-context "$CONTEXT" --key-file "$OUT/openbao-init.json" --from-dir "$seed_dir" \
+  --generate shared/KIONGA_INTERNAL_TOKEN=hex:24 --generate gateway/OIDC_CLIENT_SECRET=hex:24 \
+  --generate gateway/KIONGA_CREDENTIAL_KEY=base64:32 --generate gateway/KIONGA_SIGNING_KEY=base64:32
+find "$seed_dir" -type f -delete
+find "$seed_dir" -depth -type d -empty -delete
 
 step "Kionga chart"
 helm upgrade --install kionga "$ROOT/helm/kionga" --kube-context "$CONTEXT" --namespace kionga-system \
-  -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --timeout 10m
-"${KUBECTL[@]}" -n kionga-workloads create secret generic kionga-model-storage \
-  --from-literal=AWS_ACCESS_KEY_ID="$access_key" --from-literal=AWS_SECRET_ACCESS_KEY="$secret_key" \
-  --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
+  -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --set-file "secretStore.openbao.caBundle=$OUT/openbao-ca.crt" --timeout 10m
+for namespace in kionga-system kionga-workloads; do
+  "${KUBECTL[@]}" -n "$namespace" wait --for=condition=Ready secretstore/kionga-store --timeout=180s
+  "${KUBECTL[@]}" -n "$namespace" wait --for=condition=Ready externalsecret --all --timeout=180s
+done
 for deployment in kionga-operator kionga-gateway; do
   "${KUBECTL[@]}" -n kionga-system rollout status "deployment/$deployment" --timeout=10m
 done
+
+step "Preflight against the live store"
+# A Ready store passes; a store that does not exist stops the upgrade.
+helm upgrade kionga "$ROOT/helm/kionga" --kube-context "$CONTEXT" --namespace kionga-system --dry-run=server \
+  -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --set-file "secretStore.openbao.caBundle=$OUT/openbao-ca.crt" >/dev/null
+if helm upgrade kionga "$ROOT/helm/kionga" --kube-context "$CONTEXT" --namespace kionga-system --dry-run=server \
+    -f "$ROOT/kind/ci/values.yaml" -f "$OUT/images.yaml" --set secretStore.openbao.enabled=false --set externalSecrets.workspaceTargets=null \
+    --set externalSecrets.storeName=kionga-missing-store >/dev/null 2>"$OUT/preflight-missing.log"; then
+  echo "the preflight accepted a SecretStore that does not exist" >&2; exit 1
+fi
+grep -q "kionga-missing-store, which does not exist" "$OUT/preflight-missing.log" || { cat "$OUT/preflight-missing.log" >&2; exit 1; }
 "${KUBECTL[@]}" -n kionga-system get pods -o wide
 echo "Kionga is installed on $CONTEXT. Gateway: https://kionga.127.0.0.1.sslip.io (CA: $OUT/ca.crt)"

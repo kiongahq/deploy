@@ -11,6 +11,17 @@ kind: Deployment
 metadata:
   name: {{ $.Release.Name }}-{{ $name }}
   labels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
+  {{- $mounted := list }}
+  {{- if $component.secrets }}{{ $mounted = append $mounted (index $.Values.secretNames $name) }}{{ end }}
+  {{- if eq $name "gateway" }}
+  {{- if $.Values.secretReferences.names }}{{ $mounted = append $mounted $.Values.secretReferences.secretName }}{{ end }}
+  {{- if $.Values.agentDesigner.enabled }}{{ $mounted = append $mounted $.Values.agentDesigner.secretName }}{{ end }}
+  {{- if $.Values.sandbox.enabled }}{{ $mounted = append $mounted $.Values.sandbox.secretName }}{{ end }}
+  {{- end }}
+  {{- if and $.Values.secretRollout.enabled $mounted }}
+  # Reloader rolls this Deployment when one of these Secrets changes.
+  annotations: {secret.reloader.stakater.com/reload: {{ join "," $mounted | quote }}}
+  {{- end }}
 spec:
   {{- if not (and (eq $name "gateway") $.Values.gatewayAutoscaling.enabled) }}
   replicas: {{ $component.replicas }}
@@ -38,15 +49,20 @@ spec:
       {{- with $.Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
+      # Nodes the pods cannot run on (tainted control planes) do not count as
+      # spread domains; otherwise a rolling update's surge pod is unschedulable
+      # whenever every schedulable node already holds one replica.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: ScheduleAnyway
+          nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
       containers:
@@ -134,6 +150,21 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ $refs.secretName }}, key: {{ . }}}}
             {{- end }}
             {{- end }}
+            {{- with $.Values.secretStore.openbao.transit }}
+            {{- if .enabled }}
+            {{- if not (hasPrefix "https://" .address) }}{{ fail "secretStore.openbao.transit.address must be an https:// URL" }}{{ end }}
+            {{- if not (has "KIONGA_SIGNING_KEY" $component.secrets) }}{{ fail "secretStore.openbao.transit needs KIONGA_SIGNING_KEY in components.gateway.secrets" }}{{ end }}
+            # The credential key stays in OpenBao transit; the gateway logs in
+            # with its service-account token.
+            - {name: KIONGA_KEY_PROVIDER, value: openbao}
+            - {name: OPENBAO_ADDR, value: {{ .address | quote }}}
+            - {name: OPENBAO_TRANSIT_KEY, value: {{ .key | quote }}}
+            - {name: OPENBAO_AUTH_ROLE, value: {{ default (printf "%s-gateway" $.Release.Name) .role | quote }}}
+            {{- if $.Values.secretStore.openbao.caBundle }}
+            - {name: OPENBAO_CACERT_FILE, value: /etc/kionga/openbao/ca.crt}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if $.Values.sandbox.enabled }}
             - {name: KIONGA_SANDBOX_URL, value: "http://{{ $.Release.Name }}-sandbox-manager.{{ $.Release.Namespace }}.svc:8088"}
             - name: KIONGA_SANDBOX_TOKEN
@@ -192,6 +223,9 @@ spec:
             {{- if $.Values.trustedCA.configMapName }}
             - {name: trusted-ca, mountPath: /etc/kionga/ca, readOnly: true}
             {{- end }}
+            {{- if and (eq $name "gateway") $.Values.secretStore.openbao.transit.enabled $.Values.secretStore.openbao.caBundle }}
+            - {name: openbao-ca, mountPath: /etc/kionga/openbao, readOnly: true}
+            {{- end }}
       volumes:
         - name: config
           configMap: {name: {{ $.Release.Name }}-config}
@@ -202,6 +236,12 @@ spec:
           configMap:
             name: {{ $.Values.trustedCA.configMapName }}
             items: [{key: {{ $.Values.trustedCA.key }}, path: {{ $.Values.trustedCA.key }}}]
+        {{- end }}
+        {{- if and (eq $name "gateway") $.Values.secretStore.openbao.transit.enabled $.Values.secretStore.openbao.caBundle }}
+        - name: openbao-ca
+          configMap:
+            name: {{ printf "%s-openbao-ca" $.Release.Name }}
+            items: [{key: ca.crt, path: ca.crt}]
         {{- end }}
         {{- if and (eq $name "gateway") $.Values.agentDesigner.enabled }}
         - name: designer-token

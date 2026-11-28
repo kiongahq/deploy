@@ -80,7 +80,7 @@ kind-up:
 test-e2e-kind:
 	bash scripts/e2e-kind.sh
 
-k8s-prerequisites:         ## cert-manager, KEDA, KEDA HTTP add-on, KServe (CONTEXT=kube-context, pinned in helm/prerequisites/versions.env)
+k8s-prerequisites:         ## cert-manager, KEDA, KEDA HTTP add-on, KServe, OpenBao, ESO, Reloader (CONTEXT=kube-context, pinned in helm/prerequisites/versions.env)
 	bash helm/prerequisites/install.sh $(if $(CONTEXT),--kube-context $(CONTEXT))
 
 support-bundle:            ## redacted diagnostics tarball from a Kubernetes install (CONTEXT=kube-context)

@@ -16,6 +16,16 @@ duration; the run fails if any step failed. Steps:
   pipeline      a container pipeline runs through the gateway's Kubernetes Jobs
                 executor to success
 
+OpenBao secret steps (SECRET_STEPS, run with --steps and --openbao-key-file):
+
+  secrets          every ExternalSecret is Ready and every platform Secret is
+                   owned by one, so none was created with kubectl
+  secret-rotation  a new OIDC_CLIENT_SECRET written to OpenBao reaches the
+                   gateway's Secret within the refresh interval and rolls the
+                   gateway pods
+  workload-secret  an application loads a workload Secret that External Secrets
+                   created from OpenBao (labelled kionga.dev/workload-secret)
+
 The objects are created through the Kubernetes API (the operator contract),
 except the pipeline, which goes through the gateway API. Pure helpers (status
 parsing, polling, load accounting) are unit tested in tests/test_e2e_runtime.py.
@@ -24,7 +34,10 @@ parsing, polling, load accounting) are unit tested in tests/test_e2e_runtime.py.
 from __future__ import annotations
 
 import argparse
+import base64
 import concurrent.futures
+import hashlib
+import os
 import http.cookiejar
 import json
 import socket
@@ -46,6 +59,10 @@ BUSYBOX = "busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd6
 IRIS_SAMPLE = [[5.1, 3.5, 1.4, 0.2], [6.7, 3.0, 5.2, 2.3]]
 PIPELINE_SUCCESS = {"succeeded", "success", "completed"}
 PIPELINE_FAILURE = {"failed", "error", "cancelled", "canceled"}
+PLATFORM_SECRETS = {"kionga-system": ["kionga-gateway", "kionga-features", "kionga-storage", "kionga-tracing"],
+                    "kionga-workloads": ["kionga-model-storage"]}
+WORKLOAD_SECRET_LABEL = "kionga.dev/workload-secret"
+BOOTSTRAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openbao-bootstrap.sh")
 
 
 # Pure helpers -------------------------------------------------------------------
@@ -130,6 +147,30 @@ def predict_path(url: str, inference_service: str) -> str:
     if "/v1/models/" in path:
         return path + ":predict"
     return f"{path}/v1/models/{inference_service}:predict"
+
+
+def owner_kinds(obj: Optional[dict]) -> set[str]:
+    return {ref.get("kind", "") for ref in ((obj or {}).get("metadata") or {}).get("ownerReferences") or []}
+
+
+def secret_digest(secret: Optional[dict], key: str) -> str:
+    """SHA-256 of one Secret value, so steps compare values without holding or
+    printing them. Empty when the key is missing."""
+    data = ((secret or {}).get("data") or {}).get(key)
+    return hashlib.sha256(base64.b64decode(data)).hexdigest() if data else ""
+
+
+def rolled_out(deployment: Optional[dict], before_template: dict) -> bool:
+    """True once the pod template changed (an annotation or an environment
+    variable, whichever way the reloader marks it) and every replica runs it."""
+    if not deployment:
+        return False
+    spec, status = deployment.get("spec") or {}, deployment.get("status") or {}
+    template = spec.get("template") or {}
+    want = int(spec.get("replicas") or 0)
+    return (template != before_template and status.get("observedGeneration", 0) >= deployment["metadata"].get("generation", 0)
+            and int(status.get("updatedReplicas") or 0) == want and int(status.get("readyReplicas") or 0) == want
+            and int(status.get("replicas") or 0) == want)
 
 
 def pipeline_state(run: dict) -> str:
@@ -290,6 +331,9 @@ class Settings:
     function: str = "e2e-fn"
     timeout: float = 300
     scale_down_seconds: float = 30
+    openbao_key_file: str = ""
+    refresh_seconds: float = 10
+    reloader_namespace: str = "reloader"
 
 
 def application_manifest(s: Settings) -> dict:
@@ -297,6 +341,21 @@ def application_manifest(s: Settings) -> dict:
             "spec": {"image": WEB_IMAGE, "port": 8080,
                      "replicas": {"min": 1, "max": 4}, "scaling": {"metric": "requests", "target": 1}, "healthPath": "/",
                      "visibility": "public", "resources": {"requests": {"cpu": "20m", "memory": "16Mi"}, "limits": {"cpu": "200m", "memory": "64Mi"}}}}
+
+
+def workload_external_secret(s: Settings, name: str, path: str) -> dict:
+    return {"apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret", "metadata": {"name": name, "namespace": s.namespace},
+            "spec": {"refreshInterval": f"{int(s.refresh_seconds)}s", "secretStoreRef": {"name": "kionga-store", "kind": "SecretStore"},
+                     "target": {"name": name, "creationPolicy": "Owner", "deletionPolicy": "Retain",
+                                "template": {"metadata": {"labels": {WORKLOAD_SECRET_LABEL: "true"}}}},
+                     "data": [{"secretKey": "E2E_TOKEN", "remoteRef": {"key": path, "property": "E2E_TOKEN"}}]}}
+
+
+def secret_app_manifest(s: Settings, name: str, secret: str) -> dict:
+    return {"apiVersion": "kionga.dev/v1alpha1", "kind": "KiongaApplication", "metadata": {"name": name, "namespace": s.namespace},
+            "spec": {"image": WEB_IMAGE, "port": 8080, "replicas": {"min": 1, "max": 1}, "healthPath": "/", "visibility": "public",
+                     "secretRefs": [{"name": secret}],
+                     "resources": {"requests": {"cpu": "20m", "memory": "16Mi"}, "limits": {"cpu": "200m", "memory": "64Mi"}}}}
 
 
 def function_manifest(s: Settings) -> dict:
@@ -469,7 +528,82 @@ class Runner:
         return f"run {run_id} {final.get('status')} through the Jobs executor"
 
 
+    # OpenBao secret steps -----------------------------------------------------
+
+    def bootstrap(self, *args: str) -> None:
+        if not self.s.openbao_key_file:
+            raise StepFailed("needs --openbao-key-file")
+        result = subprocess.run(["bash", BOOTSTRAP, *args, "--kube-context", self.s.context, "--key-file", self.s.openbao_key_file],
+                                capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            raise StepFailed(f"openbao-bootstrap.sh {args[0]} failed: {result.stderr.strip()[-400:]}")
+
+    def step_secrets(self) -> str:
+        checked = 0
+        for namespace in (self.s.control_namespace, self.s.namespace):
+            externals = self.kube.items("externalsecrets.external-secrets.io", namespace=namespace)
+            not_ready = [f"{namespace}/{e['metadata']['name']}: {describe(e)}" for e in externals if not is_ready(e)]
+            if not_ready:
+                raise StepFailed("ExternalSecrets not Ready: " + "; ".join(not_ready))
+            checked += len(externals)
+        for namespace, names in PLATFORM_SECRETS.items():
+            namespace = self.s.control_namespace if namespace == "kionga-system" else self.s.namespace
+            for name in names:
+                secret = self.kube.get("secret", name, namespace=namespace)
+                if "ExternalSecret" not in owner_kinds(secret):
+                    raise StepFailed(f"Secret {namespace}/{name} is not owned by an ExternalSecret")
+        return f"{checked} ExternalSecrets Ready; {sum(len(n) for n in PLATFORM_SECRETS.values())} platform Secrets come from OpenBao"
+
+    def step_secret_rotation(self) -> str:
+        ns = self.s.control_namespace
+        before_secret = secret_digest(self.kube.get("secret", "kionga-gateway", namespace=ns), "OIDC_CLIENT_SECRET")
+        if not before_secret:
+            raise StepFailed("kionga-gateway has no OIDC_CLIENT_SECRET")
+        deployment = self.kube.get("deployment", "kionga-gateway", namespace=ns)
+        before_template = deployment["spec"]["template"]
+        started = time.monotonic()
+        self.bootstrap("seed", "--rotate", "gateway/OIDC_CLIENT_SECRET=hex:24")
+        # ESO rereads OpenBao every refresh interval; allow two plus scheduling slack.
+        poll(lambda: secret_digest(self.kube.get("secret", "kionga-gateway", namespace=ns), "OIDC_CLIENT_SECRET") != before_secret,
+             self.s.refresh_seconds * 2 + 30, 2, what="the rotated value in Secret kionga-gateway")
+        synced = time.monotonic() - started
+        try:
+            poll(lambda: rolled_out(self.kube.get("deployment", "kionga-gateway", namespace=ns), before_template), self.s.timeout, 5,
+                 what="the gateway to roll onto the rotated Secret",
+                 describe_last=lambda _: str(replicas(self.kube.get("deployment", "kionga-gateway", namespace=ns))))
+        except StepFailed as error:
+            try:
+                logs = self.kube.run("logs", "deployment/reloader-reloader", "--tail=15", namespace=self.s.reloader_namespace)
+            except RuntimeError as log_error:
+                logs = str(log_error)
+            raise StepFailed(f"{error}; reloader log: {logs[-1500:]}") from error
+        return f"Secret updated {synced:.0f}s after the write to OpenBao; gateway rolled in {time.monotonic() - started:.0f}s"
+
+    def step_workload_secret(self) -> str:
+        name, path = "e2e-openbao", "workloads/e2e-openbao"
+        self.bootstrap("seed", "--rotate", f"{path}/E2E_TOKEN=hex:16")
+        self.kube.apply(workload_external_secret(self.s, name, path))
+        poll(lambda: is_ready(self.kube.get("externalsecret", name)), 120, 3, what=f"ExternalSecret {name} Ready",
+             describe_last=lambda _: describe(self.kube.get("externalsecret", name)))
+        secret = self.kube.get("secret", name)
+        if ((secret.get("metadata") or {}).get("labels") or {}).get(WORKLOAD_SECRET_LABEL) != "true":
+            raise StepFailed(f"Secret {name} lacks {WORKLOAD_SECRET_LABEL}=true")
+        want = secret_digest(secret, "E2E_TOKEN")
+        app = "e2e-secret-app"
+        self.kube.apply(secret_app_manifest(self.s, app, name))
+        poll(lambda: is_ready(self.kube.get("kiongaapplication", app)), self.s.timeout, what="KiongaApplication with a workload secret Ready",
+             describe_last=lambda _: describe(self.kube.get("kiongaapplication", app)))
+        deployment = owned_by(self.kube.items("deployments"), "KiongaApplication", app)
+        selector = ",".join(f"{k}={v}" for k, v in deployment["spec"]["selector"]["matchLabels"].items())
+        pod = json.loads(self.kube.run("get", "pods", "-l", selector, "--field-selector=status.phase=Running", "-o", "json"))["items"][0]
+        have = self.kube.run("exec", pod["metadata"]["name"], "--", "sh", "-c", 'printf %s "$E2E_TOKEN" | sha256sum').split()[0]
+        if have != want:
+            raise StepFailed("the application's E2E_TOKEN does not match the Secret from OpenBao")
+        return f"application {app} loaded E2E_TOKEN from Secret {name} (OpenBao {path})"
+
+
 STEPS = ["application", "recovery", "scale-up", "function", "agent", "model", "pipeline"]
+SECRET_STEPS = ["secrets", "secret-rotation", "workload-secret"]
 DEPENDS = {"recovery": "application", "scale-up": "application"}
 
 
@@ -524,10 +658,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--scale-down-seconds", type=float, default=30)
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--steps", default=",".join(STEPS))
+    parser.add_argument("--openbao-key-file", default="", help="OpenBao key file, for the secret steps")
+    parser.add_argument("--refresh-seconds", type=float, default=10, help="externalSecrets.refreshInterval of the install")
     parser.add_argument("--report", help="write results as JSON here")
     args = parser.parse_args(argv)
     selected = [step.strip() for step in args.steps.split(",") if step.strip()]
-    unknown = set(selected) - set(STEPS)
+    unknown = set(selected) - set(STEPS) - set(SECRET_STEPS)
     if unknown:
         parser.error(f"unknown steps: {', '.join(sorted(unknown))}")
     with open(args.local_password_file) as handle:
@@ -535,7 +671,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     settings = Settings(context=args.context, namespace=args.namespace, base_domain=args.base_domain, gateway_url=args.gateway_url,
                         ca_file=args.ca_file, agent_image=args.agent_image, local_user=args.local_user, local_password=password,
                         model_name=args.model_name, model_version=args.model_version, timeout=args.timeout,
-                        scale_down_seconds=args.scale_down_seconds)
+                        scale_down_seconds=args.scale_down_seconds, openbao_key_file=args.openbao_key_file,
+                        refresh_seconds=args.refresh_seconds)
     results = run_steps(Runner(settings, Kube(args.context, args.namespace), Http(args.ca_file)), selected)
     if args.report:
         with open(args.report, "w") as handle:

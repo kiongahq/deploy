@@ -165,7 +165,7 @@ name in the scope's `*_SECRET_REFS` allowlist.
 | Path | Where the values go |
 | --- | --- |
 | Single server | Files in `secrets_directory`, listed in `secret_references` in `deployment.json` |
-| Helm | One key per name in the Secret `secretReferences.secretName`, listed in `secretReferences.names` |
+| Helm | One key per name in the Secret `secretReferences.secretName`, listed in `secretReferences.names`; ESO can create it from OpenBao |
 | Local Compose | `config/secrets/gateway.env`, one `NAME=value` per line |
 
 The single-server path needs a gateway image with kiongahq/platform#111.
@@ -203,11 +203,13 @@ applications (`<name>.<applications.baseDomain>`), Kionga-native functions
 pipelines (Kubernetes Jobs). Compose installs keep faasd and Prefect and hide
 applications.
 
-1. Install the prerequisites (cert-manager, KEDA, the KEDA HTTP add-on, KServe),
-   pinned in [`helm/prerequisites/versions.env`](helm/prerequisites/versions.env):
-   `make k8s-prerequisites CONTEXT=my-cluster`. See
-   [`helm/prerequisites/README.md`](helm/prerequisites/README.md) for the ingress
-   controller requirements and the wildcard certificate.
+1. Install the prerequisites (cert-manager, KEDA, the KEDA HTTP add-on, KServe,
+   OpenBao, External Secrets Operator and Reloader), pinned in
+   [`helm/prerequisites/versions.env`](helm/prerequisites/versions.env):
+   `make k8s-prerequisites CONTEXT=my-cluster`. Then bootstrap OpenBao and seed
+   the platform secrets with `scripts/openbao-bootstrap.sh`. See
+   [`helm/prerequisites/README.md`](helm/prerequisites/README.md) for OpenBao,
+   the ingress controller requirements and the wildcard certificate.
 2. Turn the features on in your values: `applications.enabled`,
    `applications.baseDomain`, `applications.tls`, `functions.enabled`,
    `keda.enabled`, `kserve.enabled` (see `helm/production.example.yaml`).
@@ -263,7 +265,10 @@ the prerequisites and the chart on kind with sslip.io host names, and runs
 `scripts/e2e-runtime.py`: an application answers at its host, a deleted pod
 recovers, load scales it up, a function scales to zero and wakes, an agent and a
 model become Ready and the model predicts, a pipeline runs through the Jobs
-executor. It cannot pass until the operator controllers and the applications API
+executor. The lane installs OpenBao and External Secrets Operator, bootstraps
+and seeds OpenBao, and creates every platform Secret from it; the secret steps
+check that each ExternalSecret is Ready, that a value rotated in OpenBao rolls
+the gateway, and that an application loads a workload secret from OpenBao. It cannot pass until the operator controllers and the applications API
 are in kiongahq/platform; until then, dispatch it with `platform_ref` set to their
 branch. Locally, `scripts/kind-ci-up.sh` does the same on Linux with Docker.
 

@@ -363,7 +363,8 @@ def test_preflight_names_the_first_missing_prerequisite(tmp_path, present, missi
 
 def test_preflight_passes_when_every_prerequisite_is_served(tmp_path):
     versions = ["keda.sh/v1alpha1/ScaledObject", "http.keda.sh/v1alpha1/HTTPScaledObject", "serving.kserve.io/v1beta1/InferenceService",
-                "cert-manager.io/v1/Certificate", "external-secrets.io/v1/ExternalSecret", "monitoring.coreos.com/v1/ServiceMonitor"]
+                "cert-manager.io/v1/Certificate", "external-secrets.io/v1/ExternalSecret", "external-secrets.io/v1/SecretStore",
+                "monitoring.coreos.com/v1/ServiceMonitor"]
     args = [arg for version in versions for arg in ("--api-versions", version)]
     result = render_raw(tmp_path, *args, **ON, preflight={"enabled": True, "enforceOffline": True})
     assert result.returncode == 0, result.stderr

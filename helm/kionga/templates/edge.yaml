@@ -69,8 +69,25 @@ kind: ExternalSecret
 metadata:
   name: {{ $name }}
 spec:
-  refreshInterval: 1h
+  refreshInterval: {{ $.Values.externalSecrets.refreshInterval }}
   secretStoreRef: {name: {{ $.Values.externalSecrets.storeName }}, kind: {{ $.Values.externalSecrets.storeKind }}}
+  target: {name: {{ $name }}, creationPolicy: Owner, deletionPolicy: Retain}
+  data: {{ toYaml $data | nindent 4 }}
+{{- end }}
+{{- $o := .Values.secretStore.openbao }}
+{{- if and .Values.externalSecrets.workspaceTargets (not (and $o.enabled $o.workspace.enabled)) }}
+{{- fail "externalSecrets.workspaceTargets use the OpenBao store in workspaceNamespace: set secretStore.openbao.enabled and secretStore.openbao.workspace.enabled, or create those ExternalSecrets yourself" }}
+{{- end }}
+{{- range $name, $data := .Values.externalSecrets.workspaceTargets }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.workspaceNamespace }}
+spec:
+  refreshInterval: {{ $.Values.externalSecrets.refreshInterval }}
+  secretStoreRef: {name: {{ $.Values.secretStore.openbao.workspace.storeName }}, kind: SecretStore}
   target: {name: {{ $name }}, creationPolicy: Owner, deletionPolicy: Retain}
   data: {{ toYaml $data | nindent 4 }}
 {{- end }}

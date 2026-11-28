@@ -74,3 +74,35 @@ networkPolicy:
       ports: [{port: 443}, {port: 6443}]
 preflight:
   enabled: true
+# Every platform Secret comes from OpenBao through External Secrets Operator.
+# scripts/kind-ci-up.sh seeds the values and passes the CA with --set-file.
+# The short refresh lets the rotation step see a change within seconds.
+secretStore:
+  openbao:
+    enabled: true
+    workspace:
+      enabled: true
+externalSecrets:
+  enabled: true
+  storeName: kionga-store
+  refreshInterval: 10s
+  targets:
+    kionga-gateway:
+      - {secretKey: DATABASE_URL, remoteRef: {key: gateway, property: DATABASE_URL}}
+      - {secretKey: OIDC_CLIENT_SECRET, remoteRef: {key: gateway, property: OIDC_CLIENT_SECRET}}
+      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: shared, property: KIONGA_INTERNAL_TOKEN}}
+      - {secretKey: KIONGA_CREDENTIAL_KEY, remoteRef: {key: gateway, property: KIONGA_CREDENTIAL_KEY}}
+      - {secretKey: KIONGA_LOCAL_PASSWORD, remoteRef: {key: gateway, property: KIONGA_LOCAL_PASSWORD}}
+    kionga-features:
+      - {secretKey: REDIS_URL, remoteRef: {key: features, property: REDIS_URL}}
+      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: shared, property: KIONGA_INTERNAL_TOKEN}}
+    kionga-storage:
+      - {secretKey: S3_ACCESS_KEY, remoteRef: {key: storage, property: S3_ACCESS_KEY}}
+      - {secretKey: S3_SECRET_KEY, remoteRef: {key: storage, property: S3_SECRET_KEY}}
+      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: shared, property: KIONGA_INTERNAL_TOKEN}}
+    kionga-tracing:
+      - {secretKey: TRACE_PROXY_KEYS, remoteRef: {key: tracing, property: TRACE_PROXY_KEYS}}
+  workspaceTargets:
+    kionga-model-storage:
+      - {secretKey: AWS_ACCESS_KEY_ID, remoteRef: {key: model-storage, property: AWS_ACCESS_KEY_ID}}
+      - {secretKey: AWS_SECRET_ACCESS_KEY, remoteRef: {key: model-storage, property: AWS_SECRET_ACCESS_KEY}}

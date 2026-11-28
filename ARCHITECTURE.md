@@ -53,16 +53,20 @@ network policies, edge and monitoring templates, Kionga's CRDs
 and functions (`templates/applications.yaml`: wildcard certificate, fallback
 Ingress, build egress, NetworkPolicies), the cluster preflight
 (`templates/preflight.yaml`) and opt-in managed operations access
-(`templates/operations-access.yaml`). `helm/prerequisites` installs cert-manager,
-KEDA, the KEDA HTTP add-on and KServe at pinned versions. `production.example.yaml`,
-`providers/` (EKS, GKE, AKS and storage classes) and `secretstore-*.example.yaml`
+(`templates/operations-access.yaml`) and the OpenBao SecretStore
+(`templates/secret-store.yaml`). `helm/prerequisites` installs cert-manager, KEDA,
+the KEDA HTTP add-on, KServe, OpenBao (three Raft servers, TLS from cert-manager),
+External Secrets Operator and Reloader at pinned versions. `production.example.yaml`
+(platform Secrets from OpenBao), `providers/` (EKS, GKE, AKS and storage classes),
+`secretstore-openbao.example.yaml`, the optional cloud stores
+`secretstore-{aws,gcp,azure}.example.yaml` and `externalsecret-workload.example.yaml`
 are starting points for real clusters.
 
 ### `config/`
 
 Plain manifests: CRDs (`crd/`), operator and integration-worker deployments
 (`deploy/`), RBAC, default-deny and allow network policies, optional Istio strict
-mTLS, PostgreSQL backups, Dex and Vault security settings.
+mTLS, PostgreSQL backups and Dex settings.
 
 ### `kind/`, `scripts/`
 
@@ -74,6 +78,9 @@ mTLS, PostgreSQL backups, Dex and Vault security settings.
   and k6 load tests.
 - `bootstrap-k8s-tools.sh`, `kind-up.sh`, `e2e-kind.sh`, `deploy-kubernetes.sh`,
   `cloud-preflight.py`, `verify-production.py`: the Kubernetes path.
+- `openbao-bootstrap.sh`: initialize, unseal and configure OpenBao (KV v2, the
+  credential transit key, Kubernetes auth and one policy per consumer) and seed
+  platform secrets. Idempotent; key shares stay with the operator.
 - `kind-ci-up.sh`, `e2e-runtime.py` and `kind/ci/`: the live-cluster lane
   (`.github/workflows/kubernetes-e2e.yml`). `support-bundle.py`: redacted
   diagnostics from a Kubernetes install.
@@ -94,7 +101,8 @@ wiring, the MLflow server, object migration and the production deploy path.
   released images by digest; `vm/compose.yaml` is never merged with
   `compose.yaml`.
 - **Secrets stay out of Git and out of plain config.** They arrive as environment
-  variables or `*_FILE` files.
+  variables or `*_FILE` files. On Kubernetes they come from OpenBao through External
+  Secrets Operator by default; every component is open source (no HashiCorp Vault).
 - **One ML version set.** MLflow and scikit-learn in `mlflow/Dockerfile` match the
   pipeline runner and the Jupyter image.
 - **The stack resumes whole** after Docker or the host restarts
