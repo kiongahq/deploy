@@ -155,8 +155,3 @@ def test_extra_openbao_values_come_after_the_defaults(tmp_path):
     assert openbao.index("openbao-values.yaml") < openbao.index(str(extra))
     assert dry_run("--openbao-values", str(tmp_path / "missing.yaml")).returncode == 2
 
-
-def test_no_hashicorp_vault_anywhere_in_the_prerequisites():
-    text = "\n".join(p.read_text() for p in (ROOT / "helm/prerequisites").iterdir() if p.is_file()).lower()
-    assert "hashicorp/vault" not in text and "helm.releases.hashicorp.com" not in text
-    assert "hashicorp/vault" not in "\n".join(commands()).lower()

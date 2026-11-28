@@ -78,23 +78,41 @@ networkPolicy:
   externalEgress:
     - to: [{ipBlock: {cidr: 192.0.2.0/24}}] # Replace; include cluster API address/port.
       ports: [{port: 443}, {port: 5432}, {port: 6443}, {port: 6379}]
+# Platform Secrets come from OpenBao through External Secrets Operator. Install
+# and bootstrap OpenBao first (helm/prerequisites/README.md), seed the values,
+# then pass its CA: --set-file secretStore.openbao.caBundle=openbao-ca.crt.
+# A cloud store instead: turn secretStore.openbao off and apply one of
+# helm/secretstore-{aws,gcp,azure}.example.yaml as kionga-store.
+secretStore:
+  openbao:
+    enabled: true
+    server: https://openbao.openbao.svc:8200
+    path: kionga
+    workspace:
+      enabled: true
 externalSecrets:
   enabled: true
   storeName: kionga-store
+  refreshInterval: 1h
   targets:
     kionga-gateway:
-      - {secretKey: DATABASE_URL, remoteRef: {key: kionga-production, property: database_url}}
-      - {secretKey: OIDC_CLIENT_SECRET, remoteRef: {key: kionga-production, property: oidc_client_secret}}
-      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: kionga-production, property: internal_token}}
-      - {secretKey: KIONGA_CREDENTIAL_KEY, remoteRef: {key: kionga-production, property: credential_key}}
+      - {secretKey: DATABASE_URL, remoteRef: {key: gateway, property: DATABASE_URL}}
+      - {secretKey: OIDC_CLIENT_SECRET, remoteRef: {key: gateway, property: OIDC_CLIENT_SECRET}}
+      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: shared, property: KIONGA_INTERNAL_TOKEN}}
+      - {secretKey: KIONGA_CREDENTIAL_KEY, remoteRef: {key: gateway, property: KIONGA_CREDENTIAL_KEY}}
     kionga-features:
-      - {secretKey: REDIS_URL, remoteRef: {key: kionga-production, property: redis_url}}
-      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: kionga-production, property: internal_token}}
+      - {secretKey: REDIS_URL, remoteRef: {key: features, property: REDIS_URL}}
+      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: shared, property: KIONGA_INTERNAL_TOKEN}}
     kionga-storage:
-      - {secretKey: S3_ACCESS_KEY, remoteRef: {key: kionga-production, property: s3_access_key}}
-      - {secretKey: S3_SECRET_KEY, remoteRef: {key: kionga-production, property: s3_secret_key}}
-      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: kionga-production, property: internal_token}}
+      - {secretKey: S3_ACCESS_KEY, remoteRef: {key: storage, property: S3_ACCESS_KEY}}
+      - {secretKey: S3_SECRET_KEY, remoteRef: {key: storage, property: S3_SECRET_KEY}}
+      - {secretKey: KIONGA_INTERNAL_TOKEN, remoteRef: {key: shared, property: KIONGA_INTERNAL_TOKEN}}
     # Hashed project keys only. A hosted provider also needs LLM_UPSTREAM_API_KEY
     # here and in components.trace-proxy.secrets.
     kionga-tracing:
-      - {secretKey: TRACE_PROXY_KEYS, remoteRef: {key: kionga-production, property: trace_proxy_keys}}
+      - {secretKey: TRACE_PROXY_KEYS, remoteRef: {key: tracing, property: TRACE_PROXY_KEYS}}
+  # With kserve.enabled: the read-only object store identity model servers use.
+  #workspaceTargets:
+  #  kionga-model-storage:
+  #    - {secretKey: AWS_ACCESS_KEY_ID, remoteRef: {key: model-storage, property: AWS_ACCESS_KEY_ID}}
+  #    - {secretKey: AWS_SECRET_ACCESS_KEY, remoteRef: {key: model-storage, property: AWS_SECRET_ACCESS_KEY}}

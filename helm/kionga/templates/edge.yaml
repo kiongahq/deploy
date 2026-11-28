@@ -69,8 +69,21 @@ kind: ExternalSecret
 metadata:
   name: {{ $name }}
 spec:
-  refreshInterval: 1h
+  refreshInterval: {{ $.Values.externalSecrets.refreshInterval }}
   secretStoreRef: {name: {{ $.Values.externalSecrets.storeName }}, kind: {{ $.Values.externalSecrets.storeKind }}}
+  target: {name: {{ $name }}, creationPolicy: Owner, deletionPolicy: Retain}
+  data: {{ toYaml $data | nindent 4 }}
+{{- end }}
+{{- range $name, $data := .Values.externalSecrets.workspaceTargets }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.workspaceNamespace }}
+spec:
+  refreshInterval: {{ $.Values.externalSecrets.refreshInterval }}
+  secretStoreRef: {name: {{ $.Values.secretStore.openbao.workspace.storeName }}, kind: SecretStore}
   target: {name: {{ $name }}, creationPolicy: Owner, deletionPolicy: Retain}
   data: {{ toYaml $data | nindent 4 }}
 {{- end }}

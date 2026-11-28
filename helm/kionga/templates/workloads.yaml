@@ -11,6 +11,17 @@ kind: Deployment
 metadata:
   name: {{ $.Release.Name }}-{{ $name }}
   labels: {app.kubernetes.io/instance: {{ $.Release.Name }}, app.kubernetes.io/component: {{ $name }}}
+  {{- $mounted := list }}
+  {{- if $component.secrets }}{{ $mounted = append $mounted (index $.Values.secretNames $name) }}{{ end }}
+  {{- if eq $name "gateway" }}
+  {{- if $.Values.secretReferences.names }}{{ $mounted = append $mounted $.Values.secretReferences.secretName }}{{ end }}
+  {{- if $.Values.agentDesigner.enabled }}{{ $mounted = append $mounted $.Values.agentDesigner.secretName }}{{ end }}
+  {{- if $.Values.sandbox.enabled }}{{ $mounted = append $mounted $.Values.sandbox.secretName }}{{ end }}
+  {{- end }}
+  {{- if and $.Values.secretRollout.enabled $mounted }}
+  # Reloader rolls this Deployment when one of these Secrets changes.
+  annotations: {secret.reloader.stakater.com/reload: {{ join "," $mounted | quote }}}
+  {{- end }}
 spec:
   {{- if not (and (eq $name "gateway") $.Values.gatewayAutoscaling.enabled) }}
   replicas: {{ $component.replicas }}

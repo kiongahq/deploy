@@ -165,7 +165,7 @@ name in the scope's `*_SECRET_REFS` allowlist.
 | Path | Where the values go |
 | --- | --- |
 | Single server | Files in `secrets_directory`, listed in `secret_references` in `deployment.json` |
-| Helm | One key per name in the Secret `secretReferences.secretName`, listed in `secretReferences.names` |
+| Helm | One key per name in the Secret `secretReferences.secretName`, listed in `secretReferences.names`; ESO can create it from OpenBao |
 | Local Compose | `config/secrets/gateway.env`, one `NAME=value` per line |
 
 The single-server path needs a gateway image with kiongahq/platform#111.
@@ -203,11 +203,13 @@ applications (`<name>.<applications.baseDomain>`), Kionga-native functions
 pipelines (Kubernetes Jobs). Compose installs keep faasd and Prefect and hide
 applications.
 
-1. Install the prerequisites (cert-manager, KEDA, the KEDA HTTP add-on, KServe),
-   pinned in [`helm/prerequisites/versions.env`](helm/prerequisites/versions.env):
-   `make k8s-prerequisites CONTEXT=my-cluster`. See
-   [`helm/prerequisites/README.md`](helm/prerequisites/README.md) for the ingress
-   controller requirements and the wildcard certificate.
+1. Install the prerequisites (cert-manager, KEDA, the KEDA HTTP add-on, KServe,
+   OpenBao, External Secrets Operator and Reloader), pinned in
+   [`helm/prerequisites/versions.env`](helm/prerequisites/versions.env):
+   `make k8s-prerequisites CONTEXT=my-cluster`. Then bootstrap OpenBao and seed
+   the platform secrets with `scripts/openbao-bootstrap.sh`. See
+   [`helm/prerequisites/README.md`](helm/prerequisites/README.md) for OpenBao,
+   the ingress controller requirements and the wildcard certificate.
 2. Turn the features on in your values: `applications.enabled`,
    `applications.baseDomain`, `applications.tls`, `functions.enabled`,
    `keda.enabled`, `kserve.enabled` (see `helm/production.example.yaml`).

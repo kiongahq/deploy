@@ -214,12 +214,68 @@ workspaceQuota:
   requests.storage: 2Ti
   pods: "100"
   persistentvolumeclaims: "100"
+# External Secrets Operator creates the platform Secrets from a store. OpenBao
+# (secretStore.openbao) is the default store; helm/secretstore-{aws,gcp,azure}.example.yaml
+# are alternatives. Install ESO with helm/prerequisites/install.sh.
 externalSecrets:
   enabled: false
   storeName: kionga-store
   storeKind: SecretStore
+  # How often ESO rereads the store. A changed value reaches its Secret within
+  # this interval; Reloader then rolls the pods that mount it (secretRollout).
+  refreshInterval: 1h
   # name -> list of {secretKey: DATABASE_URL, remoteRef: {key: path, property: field}}
+  # With OpenBao, key is the path under secretStore.openbao.path (gateway reads
+  # kionga/gateway) and property is the field.
   targets: {}
+  # The same, for Secrets in workspaceNamespace (the model storage reader). They
+  # use secretStore.openbao.workspace.storeName there.
+  workspaceTargets: {}
+
+# OpenBao (MPL-2.0) through ESO's vault provider. Install and bootstrap it with
+# helm/prerequisites/install.sh and scripts/openbao-bootstrap.sh, then enable
+# this and set externalSecrets.enabled. The chart renders a SecretStore named
+# externalSecrets.storeName in the release namespace, and the ServiceAccount
+# <release>-openbao-reader whose token logs in to OpenBao.
+secretStore:
+  openbao:
+    enabled: false
+    server: https://openbao.openbao.svc:8200
+    # KV v2 mount.
+    path: kionga
+    auth:
+      mountPath: kubernetes
+      # Empty: <release>-platform, the role openbao-bootstrap.sh creates.
+      role: ""
+      # Audience of the token ESO requests; the role requires it.
+      audience: openbao
+    # PEM CA bundle that signed OpenBao's certificate. Empty: system roots.
+    #   scripts/openbao-bootstrap.sh ca --ca-out openbao-ca.crt
+    #   helm upgrade ... --set-file secretStore.openbao.caBundle=openbao-ca.crt
+    caBundle: ""
+    # A second SecretStore in workspaceNamespace for workload secrets
+    # (kionga/workloads/*) and externalSecrets.workspaceTargets. Its role reads
+    # nothing else. Users' ExternalSecrets there must label their target
+    # kionga.dev/workload-secret=true (helm/externalsecret-workload.example.yaml).
+    workspace:
+      enabled: false
+      storeName: kionga-store
+      # Empty: <release>-workspace.
+      role: ""
+    # Egress from the gateway to OpenBao, for transit encryption of the
+    # credential key. Empty `to`: pods labelled podLabels in namespace.
+    gatewayEgress:
+      enabled: false
+      namespace: openbao
+      podLabels: {app.kubernetes.io/name: openbao}
+      port: 8200
+      to: []
+
+# Roll a Deployment when a Secret it mounts changes, through Reloader
+# (installed by helm/prerequisites/install.sh): each Deployment is annotated
+# with the Secrets it reads. Without Reloader the annotation does nothing.
+secretRollout:
+  enabled: true
 
 # Run container pipeline nodes as Kubernetes Jobs from the gateway instead of
 # the Compose pipeline runner. Requires the namespace to exist (with your
@@ -254,6 +310,10 @@ crds:
 preflight:
   enabled: true
   enforceOffline: false
+  # With externalSecrets.enabled a live install checks that the store exists and
+  # is Ready (a sealed OpenBao makes it not Ready). Set true for an upgrade that
+  # itself repairs the chart's own OpenBao SecretStore.
+  allowUnreadySecretStore: false
 
 # Applications: user software services reachable at <name>.<baseDomain>, each a
 # KiongaApplication that the operator turns into a Deployment, Service, Ingress,
