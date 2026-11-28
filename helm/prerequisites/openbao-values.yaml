@@ -1,0 +1,76 @@
+# Values for the OpenBao chart (openbao/openbao-helm) that install.sh applies.
+# A three-server cluster on integrated Raft storage with TLS from cert-manager
+# (openbao-tls.yaml). Never dev mode. The image tag and digest come from
+# versions.env. Add your own values with --openbao-values FILE (applied after
+# this file), for example storage class, resources or a seal stanza.
+#
+# Seal: Shamir by default. Each server starts sealed after every restart and
+# scripts/openbao-bootstrap.sh unseal opens it with the key shares. Auto unseal
+# built into OpenBao 2.7: transit (another OpenBao), kmip and static. PKCS#11
+# and the cloud KMS seals (awskms, gcpckms, azurekeyvault, alicloudkms, ocikms)
+# are KMS plugins from openbao/openbao-plugins since 2.7.0.
+global:
+  tlsDisable: false
+injector:
+  enabled: false
+csi:
+  enabled: false
+ui:
+  enabled: false
+server:
+  image:
+    registry: quay.io
+    repository: openbao/openbao
+  # Start every server at once: sealed servers are not Ready, and OrderedReady
+  # would hold openbao-1 until openbao-0 is unsealed.
+  podManagementPolicy: Parallel
+  updateStrategyType: OnDelete
+  resources:
+    requests: {cpu: 250m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  # The CLI inside each pod talks to 127.0.0.1:8200 and verifies the server
+  # certificate against the private CA.
+  extraEnvironmentVars:
+    BAO_CACERT: /openbao/tls/ca.crt
+  volumes:
+    - name: tls
+      secret: {secretName: openbao-server-tls, defaultMode: 0440}
+  volumeMounts:
+    - {name: tls, mountPath: /openbao/tls, readOnly: true}
+  dataStorage:
+    enabled: true
+    size: 10Gi
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = false
+
+        listener "tcp" {
+          address         = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_cert_file   = "/openbao/tls/tls.crt"
+          tls_key_file    = "/openbao/tls/tls.key"
+          tls_min_version = "tls12"
+        }
+
+        storage "raft" {
+          path = "/openbao/data"
+          retry_join {
+            leader_api_addr     = "https://openbao-0.openbao-internal:8200"
+            leader_ca_cert_file = "/openbao/tls/ca.crt"
+          }
+          retry_join {
+            leader_api_addr     = "https://openbao-1.openbao-internal:8200"
+            leader_ca_cert_file = "/openbao/tls/ca.crt"
+          }
+          retry_join {
+            leader_api_addr     = "https://openbao-2.openbao-internal:8200"
+            leader_ca_cert_file = "/openbao/tls/ca.crt"
+          }
+        }
+
+        service_registration "kubernetes" {}
