@@ -155,6 +155,8 @@ def bao(argv):
                 fields[name] = fields[name].split(",")
             fields["token_ttl"] = int(fields["token_ttl"])
             fields["token_max_ttl"] = int(fields["token_max_ttl"])
+            if not fields.get("audience"):
+                fields.pop("audience", None)  # OpenBao omits an unset audience
         if "connection_url" in fields:
             fields = {"plugin_name": fields["plugin_name"], "allowed_roles": fields["allowed_roles"].split(","),
                       "connection_details": {"connection_url": fields["connection_url"], "username": fields["username"],

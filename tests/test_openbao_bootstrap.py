@@ -245,7 +245,7 @@ def test_roles_bind_one_service_account_in_one_namespace(ready):
     gateway = objects["auth/kubernetes/role/kionga-gateway"]
     assert gateway["bound_service_account_names"] == ["kionga-gateway"] and gateway["token_policies"] == ["kionga-gateway-transit"]
     assert gateway["bound_service_account_namespaces"] == ["kionga-system"]
-    assert (gateway["token_ttl"], gateway["token_max_ttl"], gateway["audience"]) == (3600, 86400, "")
+    assert (gateway["token_ttl"], gateway["token_max_ttl"]) == (3600, 86400) and "audience" not in gateway
 
 
 def test_a_transit_key_that_is_not_derived_is_refused(ready):

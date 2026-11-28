@@ -97,7 +97,7 @@ def test_workflow_runs_the_secret_steps_with_the_key_file():
     steps = workflow["jobs"]["e2e"]["steps"]
     secret_step = next(s for s in steps if s.get("name") == "Run the OpenBao secret steps")
     assert '--openbao-key-file "$OUT/openbao-init.json"' in secret_step["run"]
-    assert "!cancelled()" in secret_step["if"]
+    assert "!cancelled()" in secret_step["if"] and "steps.setup.outcome == 'success'" in secret_step["if"]
     assert set(secret_step["env"]["SECRET_STEPS"].split("'")[1].split(",")) == set(e2e.SECRET_STEPS)
     upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact"))
     assert "openbao-init.json" not in upload["with"]["path"], "the key shares never leave the runner"

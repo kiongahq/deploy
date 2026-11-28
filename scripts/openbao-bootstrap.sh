@@ -181,6 +181,9 @@ elif cmd == "same":
         for part in field.split("."):
             have = have.get(part) if isinstance(have, dict) else None
         wanted = json.loads(wanted)
+        # OpenBao leaves out empty fields (an unset audience); treat as equal.
+        if have is None and wanted in ("", []):
+            have = wanted
         if isinstance(wanted, list):
             have = sorted(have or [])
             wanted = sorted(wanted)
