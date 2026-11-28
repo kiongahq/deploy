@@ -145,6 +145,8 @@ def test_external_secrets_installs_its_crds_and_reloader_is_scoped_to_the_releas
     reloader = next(c for c in cmds if c.startswith("helm upgrade --install reloader "))
     assert "reloader.watchGlobally=false" in reloader and "reloader.namespaces={acme-system}" in reloader
     assert "reloader.reloadStrategy=annotations" in reloader
+    # The Role Reloader creates needs the release namespace to exist first.
+    assert cmds.index("kubectl apply namespace acme-system") < cmds.index(reloader)
     assert dry_run("--kionga-namespace", "Bad_Name").returncode == 2
 
 

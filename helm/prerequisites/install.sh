@@ -59,6 +59,13 @@ skipped() {
   return 1
 }
 release() { echo "https://github.com/kserve/kserve/releases/download/${KSERVE_VERSION}/helm-chart-$1-${KSERVE_VERSION}.tgz"; }
+# apply_namespace NAME: create the namespace if it is missing (kubectl apply).
+apply_namespace() {
+  echo "+ $(printf '%s ' kubectl "${kube[@]+"${kube[@]}"}")apply namespace $1"
+  if [[ $dry_run -eq 0 ]]; then
+    printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: %s\n' "$1" | kubectl "${kube[@]+"${kube[@]}"}" apply -f -
+  fi
+}
 
 if [[ $dry_run -eq 0 ]]; then
   command -v helm >/dev/null || { echo "helm is required" >&2; exit 1; }
@@ -145,6 +152,8 @@ fi
 if ! skipped reloader; then
   # Scoped to the Kionga release namespace: a Role there, no ClusterRole, and
   # only Deployments annotated secret.reloader.stakater.com/reload are rolled.
+  # The Role needs the namespace; installing the chart into it later is fine.
+  apply_namespace "$kionga_namespace"
   run helm upgrade --install reloader stakater/reloader "${helm_ctx[@]+"${helm_ctx[@]}"}" --namespace reloader --create-namespace \
     --version "$RELOADER_CHART_VERSION" --set reloader.watchGlobally=false --set "reloader.namespaces={$kionga_namespace}" \
     --set reloader.reloadStrategy=annotations --set reloader.ignoreConfigMaps=true --wait --timeout 10m
