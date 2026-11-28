@@ -89,7 +89,7 @@ jobs:
           fetch agent-runtime "$AGENT_RUNTIME_REF"
           fetch sdk-python "$SDK_PYTHON_REF"
           fetch trace-proxy "$TRACE_PROXY_REF"
-      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+      - uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
         with:
           install_only: true
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
